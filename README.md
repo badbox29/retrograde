@@ -169,6 +169,17 @@ whoever is in the house.
 
 ---
 
+## Caring for more than one person
+
+Tap the name in the top bar. The sheet lists every log you belong to and lets
+you create another. Creating one makes you its owner; everyone else joins by
+invite as usual.
+
+Logs are fully separate — own people, own buttons, own history, own print
+range. Nothing is shared between them. One device can hold several locally;
+the display list, the sync cursor and the archive backfill are all scoped per
+recipient.
+
 ## Files
 
     index.html              shell, SVG icon sprite, all views
@@ -234,7 +245,7 @@ scrim, Escape or Cancel writes nothing; Save with an untouched form does
 write; a half-typed form asks before discarding; and editing an existing entry
 still supersedes rather than duplicating.
 
-Three bugs worth naming, all found by testing rather than by reading:
+Five bugs worth naming, all found by testing rather than by reading:
 
 **The key race.** `getKey()` memoised a value, not a promise. A batch write
 calls `seal()` through `Promise.all`, so every concurrent call saw the key as
@@ -246,6 +257,18 @@ sync. `getKey()` and `open()` now memoise the in-flight promise.
 **Dropped orphan notes.** A note whose parent had not synced yet was appended
 to an array that had already been consumed, so it vanished instead of being
 shown on its own.
+
+**Service worker caching the API.** The fetch handler was cache-first for
+every same-origin GET, which included `/auth/me` and `/sync` if the worker is
+ever routed under the app's own domain. A cache hit looks like a healthy 200,
+so the log would have quietly stopped updating with no error anywhere. Only
+shell paths are cached now; everything else goes straight to the network.
+
+**Writes that resolved before they committed.** `kvSet` and the entry writes
+resolved on IndexedDB *request success*, not on *transaction commit*. Any
+caller that wrote and then immediately called `location.reload()` — switching
+recipients does exactly that — tore the page down in between, so the write
+silently never landed. A care record must not lose a write it acknowledged.
 
 **The guard that never ran.** `$('sheetClose').onclick = UI.closeSheet` passes
 the click Event as the first argument. Since `closeSheet(force)` reads that

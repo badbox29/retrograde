@@ -5,7 +5,7 @@
  * never cached: the entries live in IndexedDB, and a stale cached response
  * pretending to be fresh is worse than an honest offline state.
  */
-const CACHE = 'carelog-v2';
+const CACHE = 'carelog-v4';
 
 const SHELL = [
   './',
@@ -37,13 +37,18 @@ self.addEventListener('activate', e => {
   );
 });
 
+// Resolved once, so the fetch handler can tell a shell file from anything
+// else by pathname rather than by guessing at URL shapes.
+const SHELL_PATHS = new Set(
+  SHELL.map(p => new URL(p, self.registration.scope).pathname)
+);
+
 self.addEventListener('fetch', e => {
   const req = e.request;
   if (req.method !== 'GET') return;
 
   const url = new URL(req.url);
 
-  // Never intercept the worker or Google's endpoints.
   if (url.origin !== location.origin) {
     if (/fonts\.(googleapis|gstatic)\.com$/.test(url.hostname)) {
       e.respondWith(staleWhileRevalidate(req));
@@ -51,7 +56,18 @@ self.addEventListener('fetch', e => {
     return;
   }
 
-  // Shell: cache first, it barely changes and speed matters more here.
+  // ONLY the shell is cached. Everything else on this origin goes straight
+  // to the network, untouched.
+  //
+  // This matters more than it looks: if the sync worker is ever routed
+  // under the same domain as the app, a cache-first rule would serve a
+  // stale /auth/me or /sync forever and the log would quietly stop
+  // updating — with no error anywhere, because a cache hit looks like a
+  // perfectly good 200.
+  const isShell = req.mode === 'navigate' || SHELL_PATHS.has(url.pathname);
+  if (!isShell) return;
+
+  // Shell: cache first. It barely changes and open speed matters here.
   e.respondWith(
     caches.match(req).then(hit => hit || fetch(req).then(res => {
       if (res.ok) {
