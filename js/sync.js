@@ -174,7 +174,10 @@ const Sync = (() => {
   }
 
   async function pull() {
-    const saved = parseInt((await Store.kvGet('cursor')) || '0', 10);
+    // Per recipient. A single shared cursor let a switch to one log move
+    // the other log's sync position forward, silently skipping entries.
+    const ckey  = `cursor:${rid}`;
+    const saved = parseInt((await Store.kvGet(ckey)) || '0', 10);
     const from  = saved ? String(Math.max(0, saved - OVERLAP)).padStart(13, '0') : '';
 
     let since = from;
@@ -191,7 +194,7 @@ const Sync = (() => {
       }
       if (res.cursor) {
         const n = parseInt(res.cursor, 10);
-        if (Number.isFinite(n) && n > 0) await Store.kvSet('cursor', String(n));
+        if (Number.isFinite(n) && n > 0) await Store.kvSet(ckey, String(n));
         since = res.cursor;
       }
       if (!res.more) break;
@@ -220,7 +223,8 @@ const Sync = (() => {
   /** One-time backfill of sealed months when a device is new. */
   async function loadArchives(onProgress) {
     const { months } = await Api.archives(rid);
-    const done = new Set(JSON.parse((await Store.kvGet('archivesLoaded')) || '[]'));
+    const akey = `archivesLoaded:${rid}`;
+    const done = new Set(JSON.parse((await Store.kvGet(akey)) || '[]'));
     let n = 0;
     for (const m of months) {
       if (done.has(m)) continue;
@@ -232,7 +236,7 @@ const Sync = (() => {
         onProgress?.(m, n);
       } catch (e) { console.warn('[sync] archive', m, e); }
     }
-    await Store.kvSet('archivesLoaded', JSON.stringify([...done]));
+    await Store.kvSet(akey, JSON.stringify([...done]));
     return n;
   }
 
@@ -247,7 +251,10 @@ const Sync = (() => {
    * that is what `newest()` is for.
    */
   async function resolved() {
-    const all = await Store.allEntries();
+    // Scoped to the active recipient. One IndexedDB holds every log this
+    // device has synced, so without this filter two people being cared for
+    // would appear as one interleaved record.
+    const all = (await Store.allEntries()).filter(e => e.recipientId === rid);
 
     const fwd = new Map();
     for (const e of all) if (e.supersedes) fwd.set(e.supersedes, e.id);

@@ -850,18 +850,64 @@ const App = (() => {
 
   async function switchRecipient() {
     let me;
-    try { me = await Api.me(); } catch { return; }
-    if ((me.recipients || []).length < 2) return;
+    try { me = await Api.me(); }
+    catch { return UI.toast('Need a connection to switch logs.'); }
 
-    const box = UI.el('div', {});
-    for (const r of me.recipients) {
-      box.append(UI.el('button', { class: 'btn btn-quiet', type: 'button',
+    const list = me.recipients || [];
+    const box  = UI.el('div', {});
+
+    for (const r of list) {
+      const isNow = r.id === S.recipient.id;
+      box.append(UI.el('button', {
+        class: 'btn ' + (isNow ? '' : 'btn-quiet'), type: 'button',
+        style: 'margin-bottom:.5rem',
         onClick: async () => {
+          if (isNow) return UI.closeSheet(true);
           await Store.kvSet('recipientId', r.id);
           location.reload();
-        } }, r.displayName));
+        },
+      }, r.displayName + (isNow ? '  \u00b7  open' : '')));
     }
+
+    if (S.role === 'owner' || list.length) {
+      box.append(UI.el('div', { class: 'panel' },
+        UI.el('h3', { class: 'subtitle', text: 'Someone else to care for' }),
+        UI.el('p', { class: 'viewnote',
+          text: 'A separate log with its own people, buttons and history. Nothing is shared between them.' }),
+        addRecipientForm()));
+    }
+
     UI.openSheet('Switch log', box);
+  }
+
+  /** Creating a recipient makes you its owner. Everyone else joins by invite. */
+  function addRecipientForm() {
+    const name = UI.el('input', { class: 'field', type: 'text', maxlength: '80',
+      placeholder: 'Their name' });
+    const tz = UI.el('input', { class: 'field', type: 'text', maxlength: '64',
+      value: S.recipient?.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC' });
+    const go = UI.el('button', { class: 'btn btn-quiet', type: 'button' }, 'Create the log');
+
+    go.onclick = async () => {
+      const n = name.value.trim();
+      if (!n) return UI.toast('Give the log a name first.');
+      go.disabled = true;
+      try {
+        const { recipientId } = await Api.addRecipient({
+          displayName: n, timezone: tz.value.trim() || 'UTC',
+        });
+        await Store.kvSet('recipientId', recipientId);
+        location.reload();
+      } catch (e) {
+        UI.toast(e.status === 0 ? 'Need a connection to do that.' : e.message);
+        go.disabled = false;
+      }
+    };
+
+    return UI.el('div', {},
+      UI.el('label', { class: 'sheet-lab', text: 'Name' }), name,
+      UI.el('label', { class: 'sheet-lab', text: 'Time zone' }), tz,
+      go);
   }
 
   async function signOut() {

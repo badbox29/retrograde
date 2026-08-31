@@ -76,14 +76,31 @@ const Store = (() => {
     catch { return null; }
   }
 
-  async function kvSet(k, v) {
-    const s = await tx(KV, 'readwrite');
-    return wrap(s.put(v, k));
+  /**
+   * Resolves on transaction COMMIT, not on request success.
+   *
+   * The difference matters: callers that write a key and then immediately
+   * call location.reload() — switching recipients does exactly this — were
+   * tearing the page down between the two, so the write silently never
+   * landed and the app booted with the old value.
+   */
+  function kvSet(k, v) {
+    return open().then(db => new Promise((resolve, reject) => {
+      const t = db.transaction(KV, 'readwrite');
+      t.objectStore(KV).put(v, k);
+      t.oncomplete = () => resolve(v);
+      t.onerror    = e => reject(e.target.error);
+      t.onabort    = e => reject(e.target.error);
+    }));
   }
 
-  async function kvDel(k) {
-    const s = await tx(KV, 'readwrite');
-    return wrap(s.delete(k));
+  function kvDel(k) {
+    return open().then(db => new Promise((resolve, reject) => {
+      const t = db.transaction(KV, 'readwrite');
+      t.objectStore(KV).delete(k);
+      t.oncomplete = () => resolve();
+      t.onerror    = e => reject(e.target.error);
+    }));
   }
 
   // ── crypto ────────────────────────────────────────────────────────────
@@ -176,19 +193,28 @@ const Store = (() => {
 
   // ── entries ───────────────────────────────────────────────────────────
 
+  // Both of these resolve on COMMIT for the same reason kvSet does: an
+  // entry that is only "requested" is an entry that can vanish if the page
+  // goes away, and a care record must not lose a write it acknowledged.
+  function commit(rows) {
+    return open().then(db => new Promise((resolve, reject) => {
+      const t = db.transaction(ENTRIES, 'readwrite');
+      const s = t.objectStore(ENTRIES);
+      for (const r of rows) s.put(r);
+      t.oncomplete = () => resolve(rows.length);
+      t.onerror    = e => reject(e.target.error);
+      t.onabort    = e => reject(e.target.error);
+    }));
+  }
+
   async function putEntry(e) {
-    const row = await pack(e);
-    const s   = await tx(ENTRIES, 'readwrite');
-    await wrap(s.put(row));
+    await commit([await pack(e)]);
     return e;
   }
 
   async function putEntries(list) {
     if (!list?.length) return 0;
-    const rows = await Promise.all(list.map(pack));
-    const s    = await tx(ENTRIES, 'readwrite');
-    await Promise.all(rows.map(r => wrap(s.put(r))));
-    return rows.length;
+    return commit(await Promise.all(list.map(pack)));
   }
 
   async function getEntry(id) {
@@ -238,8 +264,17 @@ const Store = (() => {
     try {
       const s = await tx(ENTRIES, 'readwrite');
       await wrap(s.clear());
-      for (const k of ['session', 'cursor', 'recipient', 'person', 'role', 'workerUrl']) {
+      for (const k of ['session', 'recipient', 'recipientId', 'person', 'role', 'workerUrl']) {
         await kvDel(k);
+      }
+      // Cursors and archive markers are keyed per recipient, so they have
+      // to be swept rather than named.
+      const kv = await tx(KV, 'readonly');
+      const keys = await wrap(kv.getAllKeys());
+      for (const k of keys || []) {
+        if (typeof k === 'string' && (k.startsWith('cursor:') || k.startsWith('archivesLoaded:'))) {
+          await kvDel(k);
+        }
       }
     } catch (e) { console.warn('[store] clear', e); }
   }
