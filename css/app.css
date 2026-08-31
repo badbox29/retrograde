@@ -152,6 +152,9 @@ textarea.field { min-height: 5.5rem; resize: vertical; line-height: 1.45; }
 .fieldrow { display: grid; gap: .3rem; margin-bottom: .9rem; }
 .fieldrow > span { font-size: .82rem; color: var(--ink-2); font-weight: 700; }
 
+.sheet-body .linky { display: block; width: 100%; text-align: center;
+                     margin-top: .9rem; }
+
 .linky {
   background: none; border: 0; padding: .4rem 0; color: var(--teal);
   font-weight: 700; cursor: pointer; text-align: left;
@@ -424,16 +427,6 @@ textarea.field { min-height: 5.5rem; resize: vertical; line-height: 1.45; }
   margin: 0; font-variation-settings: "SOFT" 30;
 }
 .sheet-body { overflow-y: auto; padding: .3rem 1.15rem 1.4rem; }
-
-.logged-at {
-  display: flex; align-items: center; justify-content: space-between;
-  gap: .6rem; padding: .6rem .85rem; margin-bottom: 1rem;
-  background: var(--teal-sk); border-radius: var(--r-md);
-  font-size: .89rem; color: var(--teal); font-weight: 700;
-}
-.logged-at button { background: none; border: 0; color: var(--teal);
-                    font-weight: 700; cursor: pointer; text-decoration: underline;
-                    text-underline-offset: 3px; }
 
 /* the signature block: what worked before, shown without being asked */
 .prior {
