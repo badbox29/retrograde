@@ -5,7 +5,7 @@
  * never cached: the entries live in IndexedDB, and a stale cached response
  * pretending to be fresh is worse than an honest offline state.
  */
-const CACHE = 'carelog-v1';
+const CACHE = 'carelog-v2';
 
 const SHELL = [
   './',

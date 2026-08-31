@@ -12,10 +12,17 @@ Sync is one Cloudflare Worker backed by KV.
 
 ## What it does
 
-**One tap is a complete entry.** The home screen is a grid of large buttons.
-Tapping one writes the entry immediately, stamped now, and returns you to the
-grid. Details are optional and added afterwards. If someone only ever taps
-buttons and never types, the log is still useful.
+**Two taps is a complete entry.** The home screen is a grid of large buttons.
+Tapping one opens a form stamped with the current time; the Save button
+commits it. Everything on the form is optional, so tap-then-Save is a valid
+whole entry and someone who never types still produces a useful log.
+
+The tap deliberately writes nothing on its own. An earlier version committed
+on tap and offered an undo, which meant a pocket tap or a mis-hit on a 3-wide
+grid left a phantom meal in the record — invisible precisely because nobody
+meant to make it. A care record is the wrong place for that trade. Dismissing
+the form by any route (X, scrim, Escape, Cancel) discards it, and if you have
+typed something it asks first.
 
 **Hard moments show you what helped last time.** Tap *Agitated* and the sheet
 that slides up does not lead with a form. It leads with what settled him
@@ -222,7 +229,12 @@ Driven end to end in headless Chromium at 390px, light and dark:
 - offline: writes queue, the app reloads and stays readable with no network,
   and the queue drains on reconnect
 
-Two bugs worth naming, both found by testing rather than by reading:
+Plus 13 assertions on the commit behaviour: dismissing a tapped tile by X,
+scrim, Escape or Cancel writes nothing; Save with an untouched form does
+write; a half-typed form asks before discarding; and editing an existing entry
+still supersedes rather than duplicating.
+
+Three bugs worth naming, all found by testing rather than by reading:
 
 **The key race.** `getKey()` memoised a value, not a promise. A batch write
 calls `seal()` through `Promise.all`, so every concurrent call saw the key as
@@ -234,3 +246,8 @@ sync. `getKey()` and `open()` now memoise the in-flight promise.
 **Dropped orphan notes.** A note whose parent had not synced yet was appended
 to an array that had already been consumed, so it vanished instead of being
 shown on its own.
+
+**The guard that never ran.** `$('sheetClose').onclick = UI.closeSheet` passes
+the click Event as the first argument. Since `closeSheet(force)` reads that
+argument as truthy, the discard guard was skipped on every close. Handlers
+that take arguments must be wrapped, not passed by reference.
