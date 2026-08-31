@@ -94,8 +94,14 @@ const UI = (() => {
   // ── sheet ─────────────────────────────────────────────────────────────
 
   let sheetOnClose = null;
+  let sheetGuard   = null;
 
-  function openSheet(title, bodyNode, onClose) {
+  /**
+   * `guard` runs before the sheet closes and returns false to keep it open.
+   * Dismissing a sheet must never quietly discard something the person
+   * typed, and must never quietly commit something they didn't.
+   */
+  function openSheet(title, bodyNode, { onClose, guard } = {}) {
     const sheet = document.getElementById('sheet');
     const scrim = document.getElementById('scrim');
     document.getElementById('sheetTitle').textContent = title;
@@ -103,16 +109,20 @@ const UI = (() => {
     sheet.hidden = false;
     scrim.hidden = false;
     sheetOnClose = onClose || null;
+    sheetGuard   = guard   || null;
     document.body.style.overflow = 'hidden';
     const first = sheet.querySelector('textarea, input, button:not(#sheetClose)');
     if (first && !matchMedia('(pointer: coarse)').matches) first.focus();
   }
 
-  function closeSheet() {
+  function closeSheet(force = false) {
+    if (!force && sheetGuard && sheetGuard() === false) return;
     document.getElementById('sheet').hidden = true;
     document.getElementById('scrim').hidden = true;
     document.body.style.overflow = '';
-    const fn = sheetOnClose; sheetOnClose = null;
+    const fn = sheetOnClose;
+    sheetOnClose = null;
+    sheetGuard   = null;
     fn?.();
   }
 
@@ -124,12 +134,9 @@ const UI = (() => {
       const b = el('button', {
         class: 'tile', type: 'button', 'data-tone': t.tone || '',
         'data-kind': t.id,
-        onClick: () => {
-          b.classList.remove('just-logged');
-          void b.offsetWidth;                 // restart the wash animation
-          b.classList.add('just-logged');
-          onTap(t);
-        },
+        // No confirmation wash here. A tap opens the form; it does not
+        // write anything. The wash fires from flashTile() after a save.
+        onClick: () => onTap(t, b),
       }, icon(t.icon), el('span', { text: t.label }));
       host.append(b);
     }
@@ -266,8 +273,17 @@ const UI = (() => {
     }
   }
 
+  /** The green wash on a tile, fired only once an entry really exists. */
+  function flashTile(kind) {
+    const b = document.querySelector(`.tile[data-kind="${kind}"]`);
+    if (!b) return;
+    b.classList.remove('just-logged');
+    void b.offsetWidth;                       // restart the animation
+    b.classList.add('just-logged');
+  }
+
   return {
-    setTz, el, icon, clear, toast, openSheet, closeSheet,
+    setTz, el, icon, clear, toast, openSheet, closeSheet, flashTile,
     time, dayLong, dayShort, dayKey, todayKey, relativeDay, dayRange,
     renderTiles, entryRow, renderLog, renderWorks, priorBlock, renderMembers, initials,
   };

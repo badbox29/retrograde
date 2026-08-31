@@ -276,8 +276,11 @@ const App = (() => {
     for (const b of $('tabbar').querySelectorAll('.tab')) {
       b.onclick = () => go(b.dataset.go);
     }
-    $('sheetClose').onclick = UI.closeSheet;
-    $('scrim').onclick      = UI.closeSheet;
+    // Wrapped, not passed directly: a handler receives the click Event as
+    // its first argument, which would arrive as force=true and skip the
+    // discard guard entirely.
+    $('sheetClose').onclick = () => UI.closeSheet();
+    $('scrim').onclick      = () => UI.closeSheet();
     addEventListener('keydown', e => { if (e.key === 'Escape') UI.closeSheet(); });
 
     $('btnSyncState').onclick = () => { Sync.run().then(refresh); UI.toast('Syncing\u2026'); };
@@ -359,45 +362,61 @@ const App = (() => {
 
   // ── the logging moment ────────────────────────────────────────────────
   //
-  // Tap writes the entry immediately, then the sheet opens. For a hard
-  // moment the sheet leads with what worked last time, because that is
-  // what the person holding the phone actually needs right now. The form
-  // is underneath it, and optional.
+  // A tap opens the form. It does NOT write anything: a pocket tap or a
+  // mis-hit on a 3-wide grid must not leave a phantom meal in the record,
+  // and a phantom is invisible precisely because nobody meant to make it.
+  // The Save button is the commit.
+  //
+  // For a hard moment the form still leads with what helped last time,
+  // because that is what the person holding the phone needs before they
+  // need a text box.
 
   async function logTile(tileDef) {
-    const entry = await Sync.write({ kind: tileDef.id });
-    refresh();
+    const draft = {
+      kind:       tileDef.id,
+      occurredAt: Date.now(),
+      body:       null,
+      fields:     {},
+      whatWorked: null,
+      visibility: 'shared',
+    };
 
     const body = UI.el('div', {});
 
-    const stamp = UI.el('div', { class: 'logged-at' },
-      `Logged at ${UI.time(entry.occurredAt)}`,
-      UI.el('button', { type: 'button', onClick: async () => {
-        await Sync.undo(entry);
-        UI.closeSheet();
-        UI.toast('Removed');
-        refresh();
-      } }, 'Undo'));
-    body.append(stamp);
+    body.append(UI.el('p', { class: 'viewnote',
+      text: `${UI.relativeDay(UI.dayKey(draft.occurredAt)) || UI.dayLong(draft.occurredAt)} at ${UI.time(draft.occurredAt)}` }));
 
     if (tileDef.tone === 'hard') {
       const priors = await Sync.whatWorked(tileDef.id, 3);
-      const block  = UI.priorBlock(tileDef.id, priors.filter(p => p.id !== entry.id));
+      const block  = UI.priorBlock(tileDef.id, priors);
       if (block) body.append(block);
     }
 
-    body.append(entryForm(entry, tileDef, () => {
-      UI.closeSheet();
-      refresh();
-    }));
+    const form = entryForm(draft, tileDef, {
+      mode: 'create',
+      saveLabel: `Save ${tileDef.label.toLowerCase()}`,
+      done: () => {
+        UI.closeSheet(true);
+        UI.flashTile(tileDef.id);
+        UI.toast('Logged');
+        refresh();
+      },
+    });
 
-    UI.openSheet(tileDef.label, body);
+    body.append(form.node);
+    UI.openSheet(tileDef.label, body, { guard: form.guard });
   }
 
-  /** The detail form. Same shape whether adding after a tap or editing. */
-  function entryForm(entry, tileDef, done) {
+  /**
+   * The detail form, used both for a new draft and for editing an existing
+   * entry. Returns the node plus a guard the sheet calls before closing.
+   */
+  function entryForm(entry, tileDef, { mode, done, saveLabel } = {}) {
     const wrap = UI.el('div', {});
     let detail = entry.fields?.detail || null;
+    let dirty  = false;
+    let saved  = false;
+    const touch = () => { dirty = true; };
 
     if (tileDef.quick?.length) {
       const row = UI.el('div', { class: 'quickrow' });
@@ -408,20 +427,21 @@ const App = (() => {
           detail = detail === q ? null : q;
           for (const x of row.querySelectorAll('.chip')) x.classList.remove('is-on');
           if (detail) c.classList.add('is-on');
+          touch();
         };
         row.append(c);
       }
       wrap.append(row);
     }
 
-    const bodyIn = UI.el('textarea', { class: 'field',
+    const bodyIn = UI.el('textarea', { class: 'field', onInput: touch,
       placeholder: tileDef.prompt || 'Anything worth writing down.' });
     bodyIn.value = entry.body || '';
     wrap.append(UI.el('label', { class: 'sheet-lab', text: 'Notes' }), bodyIn);
 
     let workedIn = null;
     if (tileDef.tone === 'hard') {
-      workedIn = UI.el('textarea', { class: 'field',
+      workedIn = UI.el('textarea', { class: 'field', onInput: touch,
         placeholder: 'If anything settled it \u2014 write it here so it is there next time.' });
       workedIn.value = entry.whatWorked || '';
       wrap.append(UI.el('label', { class: 'sheet-lab', text: 'What helped' }), workedIn);
@@ -429,7 +449,7 @@ const App = (() => {
 
     let visIn = null;
     if (S.role !== 'caregiver') {
-      visIn = UI.el('input', { type: 'checkbox' });
+      visIn = UI.el('input', { type: 'checkbox', onChange: touch });
       visIn.checked = entry.visibility === 'family';
       wrap.append(UI.el('label', { class: 'vis' }, visIn,
         UI.el('div', {},
@@ -437,19 +457,39 @@ const App = (() => {
           UI.el('em', { text: 'Caregivers will not see it, and it never goes into a printout or a shared link.' }))));
     }
 
-    const save = UI.el('button', { class: 'btn', type: 'button' }, 'Save');
+    const save = UI.el('button', { class: 'btn', type: 'button' },
+      saveLabel || 'Save');
     save.onclick = async () => {
       save.disabled = true;
-      await Sync.edit(entry, {
+      const patch = {
         body:       bodyIn.value.trim() || null,
         whatWorked: workedIn ? (workedIn.value.trim() || null) : entry.whatWorked,
         fields:     { ...(entry.fields || {}), detail },
         visibility: visIn ? (visIn.checked ? 'family' : 'shared') : entry.visibility,
-      });
+      };
+      if (mode === 'create') {
+        await Sync.write({ kind: entry.kind, occurredAt: entry.occurredAt, ...patch });
+      } else {
+        await Sync.edit(entry, patch);
+      }
+      saved = true;
       done();
     };
     wrap.append(save);
-    return wrap;
+
+    if (mode === 'create') {
+      wrap.append(UI.el('button', { class: 'linky', type: 'button',
+        onClick: () => { dirty = false; UI.closeSheet(true); } }, 'Cancel'));
+    }
+
+    // Returning false keeps the sheet open. Only ever asks when there is
+    // something real to lose; an untouched form closes without a word.
+    const guard = () => {
+      if (saved || !dirty) return true;
+      return confirm('Discard this entry?');
+    };
+
+    return { node: wrap, guard };
   }
 
   // ── entry detail ──────────────────────────────────────────────────────
@@ -461,7 +501,12 @@ const App = (() => {
     body.append(UI.el('p', { class: 'viewnote',
       text: `${UI.dayLong(e.occurredAt)} at ${UI.time(e.occurredAt)} \u00b7 ${e.authorName || 'someone'}` }));
 
-    body.append(entryForm(e, tileDef, () => { UI.closeSheet(); refresh(); }));
+    const form = entryForm(e, tileDef, {
+      mode: 'edit',
+      saveLabel: 'Save changes',
+      done: () => { UI.closeSheet(true); refresh(); },
+    });
+    body.append(form.node);
 
     // Threaded family note. Rides the same append-only stream as everything
     // else: it is just an entry with a parent.
@@ -474,7 +519,7 @@ const App = (() => {
         if (!t) return;
         add.disabled = true;
         await Sync.write({ kind: 'note', body: t, parentId: e.id, visibility: 'family' });
-        UI.closeSheet(); refresh(); UI.toast('Note added');
+        UI.closeSheet(true); refresh(); UI.toast('Note added');
       };
       body.append(UI.el('div', { class: 'panel' },
         UI.el('h3', { class: 'subtitle', text: 'Family note' }), note, add));
@@ -482,12 +527,13 @@ const App = (() => {
 
     const del = UI.el('button', { class: 'linky', type: 'button' }, 'Remove this entry');
     del.onclick = async () => {
+      if (!confirm('Remove this entry from the log?')) return;
       await Sync.remove(e);
-      UI.closeSheet(); refresh(); UI.toast('Removed from the log');
+      UI.closeSheet(true); refresh(); UI.toast('Removed from the log');
     };
     body.append(del);
 
-    UI.openSheet(tileDef.label, body);
+    UI.openSheet(tileDef.label, body, { guard: form.guard });
   }
 
   // ── full log ──────────────────────────────────────────────────────────
