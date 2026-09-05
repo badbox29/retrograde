@@ -302,9 +302,53 @@ const Sync = (() => {
     return all.filter(e => e.whatWorked && e.whatWorked.trim());
   }
 
+  /**
+   * Cycle day, derived rather than stored.
+   *
+   * A cycle start is just an entry (`cancer_cycle_start`). The cycle day of
+   * any other entry is counted from whichever start precedes it. Nothing is
+   * written down, so nothing goes stale:
+   *
+   *   - a delayed cycle is a start on a different date, no special case
+   *   - a regimen change is a new start, no special case
+   *   - correcting a mis-entered start re-labels every affected entry,
+   *     because the day was never stored anywhere to be wrong
+   *   - nobody ever types "day 3"
+   *
+   * Day 1 is the day of the infusion, which is how oncology counts it —
+   * not day 0.
+   */
+  function cycleDays(entries) {
+    const startKinds = new Set(Packs.cycleStartKinds());
+    const starts = entries
+      .filter(e => startKinds.has(e.kind))
+      .sort((a, b) => a.occurredAt - b.occurredAt);
+    if (!starts.length) return new Map();
+
+    const dayKey = ts => UI.dayKey(ts);
+    const out = new Map();
+
+    for (const e of entries) {
+      // The most recent start at or before this entry.
+      let anchor = null;
+      for (const s of starts) {
+        if (s.occurredAt <= e.occurredAt) anchor = s; else break;
+      }
+      if (!anchor) continue;
+
+      // Counted in whole local days so an evening entry and the next
+      // morning's are not the same day, and a 23-hour gap is not two.
+      const a = Date.parse(dayKey(anchor.occurredAt) + 'T00:00:00Z');
+      const b = Date.parse(dayKey(e.occurredAt)      + 'T00:00:00Z');
+      out.set(e.id, { day: Math.round((b - a) / 86400000) + 1, startId: anchor.id });
+    }
+    return out;
+  }
+
   return {
     init, stop, run, push, pull, write, edit, remove, undo,
-    resolved, whatWorked, allWhatWorked, loadArchives, on, state, uuid,
+    resolved, whatWorked, allWhatWorked, loadArchives, cycleDays,
+    on, state, uuid,
     get role() { return role; },
     set role(r) { role = r; },
   };

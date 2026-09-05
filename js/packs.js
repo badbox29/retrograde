@@ -16,6 +16,12 @@
  *             settles him when he's agitated too
  *   quick     one-tap detail chips, written into entry.fields.detail
  *   prompt    placeholder for the free-text box
+ *   field     a unit registry quantity ('temperature', 'glucose', ...).
+ *             Declares the QUANTITY, never a unit — conversion lives in
+ *             units.js and no pack ever mentions °F.
+ *   threshold { above | below, note, source } in CANONICAL units. Shown
+ *             when the entry is written, never when reading old ones.
+ *   marks     'cycle_start' — this tile anchors cancer cycle-day counting
  */
 const Packs = (() => {
 
@@ -95,6 +101,113 @@ const Packs = (() => {
       ],
     },
 
+
+    {
+      id: 'cancer',
+      label: 'Cancer treatment',
+      note: 'Chemo cycles, side effects, and the symptoms that need a phone call.',
+      tiles: [
+        { id: 'cancer_cycle_start', label: 'Cycle start', icon: 'i-cycle',
+          marks: 'cycle_start',
+          prompt: 'Which cycle, and anything the team said.' },
+
+        // Neutropenic fever. The one place this app says "consider calling",
+        // and it does so because the number came from their own oncologist,
+        // not from us.
+        { id: 'temperature', label: 'Temp', icon: 'i-temp',
+          field: 'temperature',
+          threshold: {
+            above: 38,
+            note: 'Chemotherapy guidance commonly treats a temperature over 38 °C as urgent, especially during the low-count window. Consider notifying their care team.',
+            source: 'Standard neutropenic fever guidance',
+          },
+          prompt: 'How were they in themselves?' },
+
+        { id: 'nausea', label: 'Nausea', icon: 'i-nausea', tone: 'hard', pool: 'chemo',
+          quick: ['Queasy', 'Was sick', 'Could not keep food down'],
+          prompt: 'When did it start, and what had they eaten?' },
+        { id: 'fatigue', label: 'Fatigue', icon: 'i-battery', tone: 'hard', pool: 'chemo',
+          quick: ['Slower than usual', 'Needed to rest', 'Could not get up'] },
+        { id: 'mouth_sores', label: 'Mouth', icon: 'i-mouth', tone: 'hard', pool: 'chemo',
+          quick: ['Sore', 'Ulcers', 'Hard to eat'] },
+        { id: 'neuropathy', label: 'Hands & feet', icon: 'i-tingle', tone: 'hard', pool: 'chemo',
+          quick: ['Tingling', 'Numb', 'Dropping things'],
+          prompt: 'Worth reporting — this one is tracked over time.' },
+        { id: 'appetite', label: 'Appetite', icon: 'i-meal',
+          quick: ['Normal', 'Poor', 'Nothing at all', 'Tastes wrong'] },
+        { id: 'weight', label: 'Weight', icon: 'i-scale', field: 'mass' },
+        { id: 'good_moment', label: 'Good moment', icon: 'i-sun', tone: 'good',
+          prompt: 'Worth keeping. What happened?' },
+      ],
+    },
+
+    {
+      id: 'diabetes',
+      label: 'Diabetes',
+      note: 'Blood sugar, insulin, hypos and hypers.',
+      tiles: [
+        { id: 'diabetes_glucose', label: 'Blood sugar', icon: 'i-drop',
+          field: 'glucose',
+          quick: ['Before a meal', 'After a meal', 'Bedtime', 'Felt wrong'],
+          threshold: {
+            below: 3.9,
+            note: 'Below about 3.9 mmol/L (70 mg/dL) is usually treated as a hypo. Follow whatever plan their team gave, and consider notifying them if it keeps happening.',
+            source: 'Common hypoglycaemia threshold',
+          } },
+
+        // Hypo and hyper are separate tiles rather than one "reading out of
+        // range", because what you do about them could not be more different.
+        { id: 'diabetes_hypo', label: 'Hypo', icon: 'i-down', tone: 'hard', pool: 'glycaemic',
+          quick: ['Shaky', 'Sweaty', 'Confused', 'Needed help'],
+          prompt: 'What did they have, and how long until it lifted?' },
+        { id: 'diabetes_hyper', label: 'High', icon: 'i-up', tone: 'hard', pool: 'glycaemic',
+          quick: ['Thirsty', 'Tired', 'Up in the night'] },
+        { id: 'diabetes_insulin', label: 'Insulin', icon: 'i-syringe',
+          quick: ['With a meal', 'Correction', 'Long-acting'],
+          prompt: 'Which one and how many units.' },
+        { id: 'diabetes_feet', label: 'Feet', icon: 'i-foot',
+          quick: ['Checked, fine', 'Redness', 'A sore', 'Numbness'],
+          prompt: 'Checked daily is the advice. Anything new?' },
+      ],
+    },
+
+    {
+      id: 'autism',
+      label: 'Autism',
+      note: 'Pattern-hunting: what came before, what helped, what changed.',
+      tiles: [
+        // The whole pack is built around the sequence antecedent → event →
+        // what helped, because that sequence is the thing a parent is
+        // actually trying to see. Every hard tile here shares one pool, so
+        // whatever regulated a meltdown surfaces on a shutdown too.
+        { id: 'autism_meltdown', label: 'Meltdown', icon: 'i-storm',
+          tone: 'hard', pool: 'dysregulation',
+          quick: ['Sudden', 'Built up slowly', 'After a change', 'After a demand'],
+          prompt: 'What was happening in the ten minutes before?' },
+        { id: 'autism_shutdown', label: 'Shutdown', icon: 'i-fog',
+          tone: 'hard', pool: 'dysregulation',
+          quick: ['Went quiet', 'Would not move', 'Hid'],
+          prompt: 'What was happening in the ten minutes before?' },
+        { id: 'autism_sensory', label: 'Too much', icon: 'i-waves',
+          tone: 'hard', pool: 'dysregulation',
+          quick: ['Noise', 'Light', 'Crowd', 'Touch', 'Smell', 'Clothes'],
+          prompt: 'Which sense, and how bad?' },
+        { id: 'autism_transition', label: 'Transition', icon: 'i-arrow-swap',
+          tone: 'hard', pool: 'dysregulation',
+          quick: ['Went fine', 'Warning helped', 'Refused', 'No warning given'],
+          prompt: 'From what, to what?' },
+        { id: 'autism_stimming', label: 'Stimming', icon: 'i-wave',
+          quick: ['Happy', 'Regulating', 'More than usual'],
+          prompt: 'Neutral by default — worth logging as information, not a problem.' },
+        { id: 'autism_regulated', label: 'Regulated', icon: 'i-anchor', tone: 'good',
+          prompt: 'What brought them back? This is the one that gets reread.' },
+        { id: 'autism_communication', label: 'Communication', icon: 'i-speech',
+          quick: ['Spoke', 'Used device', 'Signed', 'Non-speaking today'] },
+        { id: 'autism_win', label: 'Win', icon: 'i-sun', tone: 'good',
+          prompt: 'Something that went well.' },
+      ],
+    },
+
     {
       id: 'infant',
       label: 'Baby care',
@@ -145,7 +258,33 @@ const Packs = (() => {
 
   /** Tile definition for a kind, from any pack, enabled or not — old
    *  entries must keep rendering after a pack is switched off. */
+  /**
+   * Which packs this household has on. Set once at boot.
+   *
+   * This matters because shared ids are deliberate: `temperature` is one id
+   * whether it is logged from the body pack or the cancer pack, so switching
+   * packs never fragments the record. But the two definitions differ — the
+   * cancer one carries the neutropenic fever threshold — and resolving by
+   * array order would either hide that threshold from a chemo household or
+   * show chemo wording to a dementia one. Enabled packs win.
+   */
+  let ACTIVE = null;
+
+  function setActive(enabled) {
+    ACTIVE = new Set([...(enabled?.length ? enabled : DEFAULT_PACKS), 'basics']);
+  }
+
   function tile(kind) {
+    // A definition from a pack this household actually has on.
+    if (ACTIVE) {
+      for (const p of ALL) {
+        if (!ACTIVE.has(p.id)) continue;
+        const t = p.tiles.find(x => x.id === kind);
+        if (t) return t;
+      }
+    }
+    // Otherwise any definition, so an entry from a pack since switched off
+    // still renders with a real label instead of a raw id.
     for (const p of ALL) {
       const t = p.tiles.find(x => x.id === kind);
       if (t) return t;
@@ -169,5 +308,50 @@ const Packs = (() => {
     return out;
   }
 
-  return { ALL, SYSTEM, DEFAULT_PACKS, byId, tilesFor, tile, label, tone, poolFor };
+  /** The unit-registry quantity this tile records, if any. */
+  function field(kind) { return tile(kind).field || null; }
+
+  /** Threshold declaration, in canonical units. */
+  function threshold(kind) { return tile(kind).threshold || null; }
+
+  /** Kinds that anchor cancer cycle-day counting. */
+  function cycleStartKinds() {
+    const out = [];
+    for (const p of ALL) for (const t of p.tiles) {
+      if (t.marks === 'cycle_start') out.push(t.id);
+    }
+    return out;
+  }
+
+  /**
+   * Apply a recipient's tile overrides: rename, hide, reorder.
+   *
+   * Ids are permanent; labels are not. A family renaming "Bathroom" to
+   * whatever they actually say breaks nothing, and hiding what they never
+   * use is how the grid stays scannable rather than by capping it.
+   */
+  function withOverrides(tiles, overrides) {
+    if (!overrides?.length) return tiles;
+    const by = new Map(overrides.map(o => [o.id, o]));
+    return tiles
+      .filter(t => !by.get(t.id)?.hidden)
+      .map(t => {
+        const o = by.get(t.id);
+        return o?.label ? { ...t, label: o.label } : t;
+      })
+      .sort((a, b) => {
+        // Explicit order wins; everything else keeps its shipped position,
+        // which for the check-in set is intensity within a category.
+        const ao = by.get(a.id)?.order, bo = by.get(b.id)?.order;
+        if (ao == null && bo == null) return 0;
+        if (ao == null) return 1;
+        if (bo == null) return -1;
+        return ao - bo;
+      });
+  }
+
+  return {
+    ALL, SYSTEM, DEFAULT_PACKS, setActive, byId, tilesFor, tile, label, tone, poolFor,
+    field, threshold, cycleStartKinds, withOverrides,
+  };
 })();

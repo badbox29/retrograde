@@ -144,17 +144,29 @@ const UI = (() => {
 
   // ── entries ───────────────────────────────────────────────────────────
 
-  function entryRow(e, onOpen) {
+  function entryRow(e, onOpen, cycle) {
     const tone = Packs.tone(e.kind);
     const detail = e.fields?.detail;
+
+    // Readings are stored canonical and rendered in whoever is looking.
+    const quantity = Packs.field(e.kind);
+    const reading = quantity && e.fields?.[quantity] != null
+      ? Units.format(quantity, e.fields[quantity])
+      : null;
 
     const main = el('div', { class: 'ent-main' },
       el('div', {},
         el('span', { class: 'ent-k', 'data-tone': tone || '', text: Packs.label(e.kind) }),
+        reading ? el('span', { class: 'ent-read' }, reading) : null,
         detail ? el('span', { class: 'ent-b', text: ' \u00b7 ' + detail }) : null,
       ),
       e.body ? el('div', { class: 'ent-b', text: e.body }) : null,
     );
+
+    if (e.fields?.crossed) {
+      main.append(el('div', { class: 'ent-crossed' },
+        icon('i-alert', 'ic'), 'Past the threshold they were given'));
+    }
 
     const row = el('div', {
       class: 'ent', role: 'button', tabindex: '0',
@@ -187,7 +199,7 @@ const UI = (() => {
     return row;
   }
 
-  function renderLog(host, entries, { emptyTitle, emptyBody, onOpen }) {
+  function renderLog(host, entries, { emptyTitle, emptyBody, onOpen, cycle }) {
     clear(host);
     if (!entries.length) {
       host.append(el('div', { class: 'empty' },
@@ -209,7 +221,13 @@ const UI = (() => {
         rel || dayLong(list[0].occurredAt),
         rel ? el('em', { text: dayShort(list[0].occurredAt) }) : null,
       ));
-      for (const e of list) box.append(entryRow(e, onOpen));
+      // Chemo logs read by cycle day, not calendar day. "Day 3" is the unit
+      // that makes a side effect legible; "14 March" is not.
+      const cd = cycle?.get(list[0].id);
+      if (cd) box.querySelector('.day-h').append(
+        el('span', { class: 'day-cycle', text: `Day ${cd.day}` }));
+
+      for (const e of list) box.append(entryRow(e, onOpen, cycle));
       host.append(box);
     }
   }

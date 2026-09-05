@@ -23,6 +23,7 @@ const App = (() => {
 
   async function boot() {
     await Store.open();
+    await Units.load();
 
     S.workerUrl = (await Store.kvGet('workerUrl')) || '';
     S.session   = (await Store.kvGet('session'))   || '';
@@ -244,6 +245,7 @@ const App = (() => {
     await Store.kvSet('recipient', S.recipient);
     await Store.kvSet('recipientId', S.recipient.id);
 
+    Packs.setActive(S.recipient.packs);
     UI.setTz(S.recipient.timezone);
     document.title = `${S.recipient.displayName} \u00b7 Care log`;
 
@@ -346,7 +348,8 @@ const App = (() => {
   // ── today ─────────────────────────────────────────────────────────────
 
   async function renderToday() {
-    const tiles = Packs.tilesFor(S.recipient.packs);
+    const tiles = Packs.withOverrides(
+      Packs.tilesFor(S.recipient.packs), S.recipient.tiles);
     UI.renderTiles($('tiles'), tiles, logTile);
 
     const all = await Sync.resolved();
@@ -355,8 +358,9 @@ const App = (() => {
 
     UI.renderLog($('todayLog'), today, {
       emptyTitle: 'Nothing logged today',
-      emptyBody:  'Tap a button above. One tap is enough \u2014 details are optional and can be added after.',
+      emptyBody:  'Tap a button above. Tap, then Save \u2014 everything on the form is optional.',
       onOpen: openEntry,
+      cycle:  Sync.cycleDays(all),
     });
   }
 
@@ -434,6 +438,52 @@ const App = (() => {
       wrap.append(row);
     }
 
+    // Numeric field with units. What gets typed is in the reader's unit;
+    // what gets stored is always canonical.
+    let numIn = null, numUnit = null;
+    const quantity = tileDef.field;
+    if (quantity) {
+      numUnit = Units.get(quantity);
+      const def = Units.unitDef(quantity, numUnit);
+      const current = entry.fields?.[quantity];
+      numIn = UI.el('input', {
+        class: 'field num', type: 'number', inputmode: 'decimal',
+        step: String(def?.step ?? 0.1), onInput: touch,
+        placeholder: Units.REGISTRY[quantity]?.label || '',
+      });
+      if (current != null) {
+        numIn.value = Units.toDisplay(quantity, current, numUnit)
+                           .toFixed(def?.decimals ?? 1);
+      }
+
+      const alertBox = UI.el('div', { class: 'threshold', hidden: true });
+      const thr = tileDef.threshold;
+
+      const checkThreshold = () => {
+        if (!thr) return;
+        const canon = Units.toCanonical(quantity, numIn.value, numUnit);
+        const hit = Units.crosses(thr, canon);
+        UI.clear(alertBox);
+        alertBox.hidden = !hit;
+        if (!hit) return;
+        // Guidance, never instruction. The number came from their own care
+        // team; the app is repeating it, not deciding anything.
+        alertBox.append(
+          UI.el('div', { class: 'threshold-h' }, UI.icon('i-alert', 'ic'),
+            UI.el('span', { text: 'Worth a call' })),
+          UI.el('p', { text: thr.note }),
+          thr.source ? UI.el('small', { text: thr.source }) : null,
+        );
+      };
+      numIn.addEventListener('input', checkThreshold);
+      checkThreshold();
+
+      wrap.append(
+        UI.el('label', { class: 'sheet-lab' },
+          `${Units.REGISTRY[quantity]?.label || 'Reading'} (${Units.symbol(quantity, numUnit)})`),
+        numIn, alertBox);
+    }
+
     const bodyIn = UI.el('textarea', { class: 'field', onInput: touch,
       placeholder: tileDef.prompt || 'Anything worth writing down.' });
     bodyIn.value = entry.body || '';
@@ -461,10 +511,28 @@ const App = (() => {
       saveLabel || 'Save');
     save.onclick = async () => {
       save.disabled = true;
+      const fields = { ...(entry.fields || {}), detail };
+
+      if (quantity && numIn) {
+        const canon = Units.toCanonical(quantity, numIn.value, numUnit);
+        if (canon == null) {
+          delete fields[quantity];
+          delete fields.crossed;
+        } else {
+          // Canonical, unrounded. Rounding here is what makes a value drift
+          // a little further every time somebody edits it.
+          fields[quantity] = canon;
+          // Recorded even if the alert was dismissed, because the printout
+          // is what a doctor actually reads.
+          if (Units.crosses(tileDef.threshold, canon)) fields.crossed = quantity;
+          else delete fields.crossed;
+        }
+      }
+
       const patch = {
         body:       bodyIn.value.trim() || null,
         whatWorked: workedIn ? (workedIn.value.trim() || null) : entry.whatWorked,
-        fields:     { ...(entry.fields || {}), detail },
+        fields,
         visibility: visIn ? (visIn.checked ? 'family' : 'shared') : entry.visibility,
       };
       if (mode === 'create') {
@@ -561,6 +629,7 @@ const App = (() => {
       emptyTitle: 'The log is empty',
       emptyBody:  'Anything logged on the Today screen shows up here.',
       onOpen: openEntry,
+      cycle:  Sync.cycleDays(all),
     });
 
     $('btnLoadArchive').hidden = false;
@@ -650,7 +719,12 @@ const App = (() => {
     for (const e of list) {
       const k = UI.dayKey(e.occurredAt);
       if (!days.has(k)) days.set(k, []);
-      const bits = [e.fields?.detail, e.body].filter(Boolean);
+      // The unit is never optional on a printout. A temperature handed to a
+      // doctor with no unit next to it is a genuine hazard.
+      const q = Packs.field(e.kind);
+      const reading = q && e.fields?.[q] != null ? Units.format(q, e.fields[q]) : null;
+      const bits = [reading, e.fields?.detail, e.body].filter(Boolean);
+      if (e.fields?.crossed) bits.push('(past the threshold given)');
       if (e.whatWorked) bits.push('What helped: ' + e.whatWorked);
       days.get(k).push({
         time: UI.time(e.occurredAt),
@@ -760,6 +834,7 @@ const App = (() => {
       cb.onchange = async () => {
         cb.checked ? on.add(p.id) : on.delete(p.id);
         S.recipient.packs = [...on];
+        Packs.setActive(S.recipient.packs);
         await Store.kvSet('recipient', S.recipient);
         try { await Api.updateRecip(S.recipient.id, { packs: S.recipient.packs }); }
         catch { UI.toast('Saved on this device. Will sync when connected.'); }
@@ -768,6 +843,8 @@ const App = (() => {
         UI.el('label', { class: 'pack-h' }, cb, UI.el('strong', { text: p.label })),
         UI.el('p', { class: 'pack-d', text: p.note })));
     }
+
+    renderUnits();
 
     $('setRecipName').textContent = S.recipient.displayName;
     $('setName').value = S.recipient.displayName;
@@ -808,6 +885,43 @@ const App = (() => {
     }
   }
 
+  /**
+   * Units are a device preference, never a per-recipient one — the night
+   * aide and the daughter can want different units for the same person and
+   * both be right.
+   */
+  function renderUnits() {
+    const preset = Units.currentPreset();
+    for (const b of $('unitPreset').querySelectorAll('.seg-b')) {
+      b.classList.toggle('is-on', b.dataset.preset === preset);
+      b.onclick = async () => {
+        await Units.applyPreset(b.dataset.preset);
+        renderUnits();
+        refresh();
+      };
+    }
+
+    const host = UI.clear($('unitList'));
+    for (const [key, q] of Object.entries(Units.REGISTRY)) {
+      const choices = Object.keys(q.units);
+      if (choices.length < 2) continue;      // pressure has nowhere to go
+
+      const row = UI.el('div', { class: 'unitrow' },
+        UI.el('span', { text: q.label }));
+      const seg = UI.el('div', { class: 'seg seg-sm' });
+      for (const u of choices) {
+        const b = UI.el('button', {
+          class: 'seg-b' + (Units.get(key) === u ? ' is-on' : ''),
+          type: 'button', text: q.units[u].symbol,
+        });
+        b.onclick = async () => { await Units.set(key, u); renderUnits(); refresh(); };
+        seg.append(b);
+      }
+      row.append(seg);
+      host.append(row);
+    }
+  }
+
   async function linkGoogleButton(host) {
     let cfg;
     try { cfg = await Api.config(); } catch { return; }
@@ -845,7 +959,8 @@ const App = (() => {
       });
       S.recipient = { ...recipient, role: S.role };
       await Store.kvSet('recipient', S.recipient);
-      UI.setTz(S.recipient.timezone);
+      Packs.setActive(S.recipient.packs);
+    UI.setTz(S.recipient.timezone);
       $('recipientName').textContent = S.recipient.displayName;
       UI.toast('Saved');
       renderSettings();
