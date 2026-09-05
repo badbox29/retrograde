@@ -926,6 +926,12 @@ async function handleCreateShare(request, env, rid, cors, access) {
         text: String(i.text || '').slice(0, 2000),
       })),
     })),
+    // Definitions for the terms used, so whoever receives this is not
+    // guessing at words like "sundowning" or "neuropathy".
+    glossary: (body.glossary || []).slice(0, 60).map(g => ({
+      term: String(g.term || '').slice(0, 60),
+      text: String(g.text || '').slice(0, 600),
+    })),
     createdBy: access.sess.personId,
     createdAt: Date.now(),
     expiresAt: Date.now() + SHARE_TTL * 1000,
@@ -959,6 +965,13 @@ function sharePage(doc) {
         </div>`).join('')}
     </section>`).join('');
 
+  const gloss = (doc.glossary || []).length ? `
+    <section class="gloss">
+      <h2>What these mean</h2>
+      ${doc.glossary.map(g => `
+        <div class="gi"><dt>${escHtml(g.term)}</dt><dd>${escHtml(g.text)}</dd></div>`).join('')}
+    </section>` : '';
+
   return `<!doctype html><html lang="en"><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="robots" content="noindex,nofollow">
@@ -978,6 +991,13 @@ function sharePage(doc) {
   .t { color:var(--mute); font-variant-numeric:tabular-nums; font-size:.875rem; }
   .k { font-weight:600; font-size:.875rem; }
   .x { white-space:pre-wrap; }
+  .gloss { margin-top:2.5rem; padding-top:1.2rem; border-top:1px solid var(--rule);
+           break-before:page; }
+  .gloss h2 { font-size:.8rem; text-transform:uppercase; letter-spacing:.06em;
+              color:var(--mute); margin:0 0 .8rem; }
+  .gi { margin-bottom:.9rem; break-inside:avoid; }
+  .gi dt { font-weight:600; margin-bottom:.1rem; }
+  .gi dd { margin:0; color:var(--mute); font-size:.92rem; }
   footer { margin-top:3rem; padding-top:1rem; border-top:1px solid var(--rule);
            color:var(--mute); font-size:.8rem; }
   @media print {
@@ -991,6 +1011,7 @@ function sharePage(doc) {
 <h1>${escHtml(doc.title)}</h1>
 <p class="sub">${escHtml(doc.subtitle)}</p>
 ${days}
+${gloss}
 <footer>Shared care log. This link expires automatically.</footer>
 </html>`;
 }
