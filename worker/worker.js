@@ -69,7 +69,11 @@ const MAX_FIELDS_JSON = 8000;
 const SYNC_PAGE       = 400;                 // keys per sync page (subrequest budget)
 const SEAL_PAGE       = 350;                 // entries sealed per invocation
 
+// 'self' is defined here but not yet invitable; the check-in pack (v0.8)
+// turns it on. The predicate handles it now so it cannot be bolted on later
+// against a filter that was never designed for it.
 const ROLES       = ['owner', 'family', 'caregiver'];
+const ALL_ROLES   = ['owner', 'family', 'caregiver', 'self'];
 const VISIBILITIES= ['shared', 'family'];
 
 // ── Response helpers ───────────────────────────────────────────────────────
@@ -258,11 +262,37 @@ async function requireAccess(request, env, rid, cors, minRole = null) {
   return { ok: true, sess, role: m.role, membership: m };
 }
 
-// The single place visibility is enforced. A caregiver never receives a
-// family-only entry, and receives no indication that one exists.
-function visibleTo(role, entry) {
-  if (entry.visibility === 'family') return role !== 'caregiver';
-  return true;
+// ── The access predicate ───────────────────────────────────────────────────
+//
+// ONE function decides what any role may read, with one clause per role and
+// a default that denies. Roles test different things — `caregiver` tests a
+// field on the entry, `self` tests a relation to the reader — but there is a
+// single mechanism, a single call site, and a single thing to audit. Adding a
+// role means adding a clause, never adding a filtering path.
+//
+// It fails CLOSED on purpose. The previous version ended in `return true`,
+// so any role it did not recognise received everything. That is the wrong
+// default for the one guarantee in this app whose failure is silent.
+function canReceive(role, personId, entry) {
+  switch (role) {
+    case 'owner':
+    case 'family':
+      return true;
+
+    case 'caregiver':
+      // Never family-only content, and no trace that any exists.
+      return entry.visibility !== 'family';
+
+    case 'self':
+      // Only what they wrote themselves, plus acknowledgements of it.
+      // Never a caregiver's entries, never family notes, never anything
+      // anyone has written *about* them.
+      if (entry.authorId === personId) return true;
+      return entry.kind === 'ack' && entry.ackFor === personId;
+
+    default:
+      return false;
+  }
 }
 
 // ── Person / recipient index helpers ───────────────────────────────────────
@@ -580,7 +610,7 @@ async function handleSync(request, env, rid, cors, access) {
   for (const k of listed.keys) {
     const v = await env[KV_BINDING].get(k.name, { type: 'json' });
     if (!v) continue;
-    if (!visibleTo(access.role, v)) continue;   // silent, no placeholder
+    if (!canReceive(access.role, access.sess.personId, v)) continue;  // silent
     entries.push(v);
   }
 
@@ -607,7 +637,8 @@ async function handleGetArchive(env, rid, month, cors, access) {
   if (!/^\d{4}-\d{2}$/.test(month)) return err('Bad month', 400, cors);
   const arr = await env[KV_BINDING].get(`r:${rid}:arch:${month}`, { type: 'json' });
   if (!arr) return err('Not found', 404, cors);
-  return ok({ month, entries: arr.filter(e => visibleTo(access.role, e)) }, cors);
+  return ok({ month, entries: arr.filter(e =>
+    canReceive(access.role, access.sess.personId, e)) }, cors);
 }
 
 // ── Archive sealing ────────────────────────────────────────────────────────
