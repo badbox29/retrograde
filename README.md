@@ -2,9 +2,8 @@
 
 A shared care journal for the people who actually do the caring — a spouse,
 adult children, a couple of friends, sometimes a paid aide. Built for a
-household caring for someone in the early stages of dementia, but the entry
-templates are data, so the same app runs a newborn log.  More care modes in
-planning for the next versions.
+household caring for someone with early-onset dementia, but the entry
+templates are data, so the same app runs a newborn log.
 
 Static HTML, CSS and JavaScript. No build step, no framework, no bundler.
 Sync is one Cloudflare Worker backed by KV.
