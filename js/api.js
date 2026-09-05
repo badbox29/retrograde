@@ -87,6 +87,11 @@ const Api = (() => {
                                          call(`/r/${rid}/invites`, { method: 'POST', body: { role, label } });
   const revoke       = (rid, pid)     => call(`/r/${rid}/members/${pid}/revoke`, { method: 'POST' });
   const createShare  = (rid, doc)     => call(`/r/${rid}/share`, { method: 'POST', body: doc });
+  const pushSubscribe   = (rid, endpoint) =>
+    call(`/r/${rid}/push/subscribe`,   { method: 'POST', body: { endpoint } });
+  const pushUnsubscribe = (rid, endpoint) =>
+    call(`/r/${rid}/push/unsubscribe`, { method: 'POST', body: { endpoint } });
+  const unanswered      = (rid)       => call(`/r/${rid}/unanswered`);
   const addRecipient = (b)            => call('/recipients', { method: 'POST', body: b });
 
   return {
@@ -94,5 +99,6 @@ const Api = (() => {
     config, me, signOut, bootstrap, redeemInvite, googleSignIn, googleLink,
     recipient, updateRecip, writeEntries, sync, archives, archive, seal,
     members, createInvite, revoke, createShare, addRecipient,
+    pushSubscribe, pushUnsubscribe, unanswered,
   };
 })();

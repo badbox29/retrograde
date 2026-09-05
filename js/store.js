@@ -178,6 +178,7 @@ const Store = (() => {
       visibility:  e.visibility ?? 'shared',
       supersedes:  e.supersedes ?? null,
       parentId:    e.parentId   ?? null,
+      ackFor:      e.ackFor     ?? null,
       deleted:     e.deleted ? 1 : 0,
       pending:     e.pending ? 1 : 0,
       sealed,

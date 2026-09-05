@@ -249,7 +249,22 @@ const App = (() => {
     UI.setTz(S.recipient.timezone);
     document.title = `${S.recipient.displayName} \u00b7 Care log`;
 
-    $('gate').hidden  = true;
+    $('gate').hidden = true;
+
+    // A different app entirely for the person being cared for.
+    if (S.role === 'self') {
+      await Sync.init(S.recipient.id, S.person, S.role);
+      Sync.on(s => {
+        const u = $('selfSync').querySelector('use');
+        u.setAttribute('href', s.status === 'offline' || s.status === 'error'
+          ? '#i-cloud-off' : '#i-cloud-ok');
+      });
+      $('selfShell').hidden = false;
+      wireSelf();
+      if (!offline) Sync.run().then(renderSelf);
+      return renderSelf();
+    }
+
     $('shell').hidden = false;
     document.body.dataset.view = 'today';
 
@@ -263,9 +278,136 @@ const App = (() => {
 
     wire();
     await Sync.init(S.recipient.id, S.person, S.role);
+    Push.refreshContext(S.recipient.id).catch(() => {});
     Sync.on(renderSyncState);
     if (!offline) Sync.run().then(refresh);
     refresh();
+  }
+
+
+  // ── The self-report screen ────────────────────────────────────────────
+
+  let selfWired = false;
+  function wireSelf() {
+    if (selfWired) return;
+    selfWired = true;
+    $('selfSync').onclick = () => { Sync.run().then(renderSelf); };
+    $('selfHistoryBtn').onclick = openSelfHistory;
+    $('selfGreeting').textContent = firstName(S.person.displayName)
+      ? `Hi ${firstName(S.person.displayName)} \u2014 how are you?`
+      : 'How are you?';
+    // Poll for acknowledgements so "Dad saw it" arrives without a refresh.
+    setInterval(() => { if (!document.hidden) Sync.run().then(renderSelf); }, 30000);
+  }
+
+  function firstName(n) { return (n || '').trim().split(/\s+/)[0] || ''; }
+
+  async function renderSelf() {
+    const groups = Packs.checkinGroups(S.recipient.tiles);
+    const host = UI.clear($('selfGrid'));
+
+    for (const g of groups) {
+      const sec = UI.el('section', { class: 'selfgroup' },
+        UI.el('h2', { class: 'selfgroup-h', text: g.label }));
+      const grid = UI.el('div', { class: 'selftiles' });
+      for (const t of g.tiles) {
+        const b = UI.el('button', {
+          class: 'selftile', type: 'button', 'data-kind': t.id,
+          'data-tone': t.tone || '',
+        }, UI.icon(t.icon, 'ic bigic'), UI.el('span', { text: t.label }));
+        // A tap commits, immediately, with no form and no confirmation.
+        // This reverses the rule everywhere else in the app on purpose:
+        // somebody pressing this is dysregulated, and friction costs more
+        // here than a spurious entry does.
+        b.onclick = () => sendCheckin(t, b);
+        grid.append(b);
+      }
+      sec.append(grid);
+      host.append(sec);
+    }
+
+    await renderSelfSent();
+  }
+
+  async function sendCheckin(tileDef, btn) {
+    btn.classList.remove('just-logged');
+    void btn.offsetWidth;
+    btn.classList.add('just-logged');
+    if (navigator.vibrate) navigator.vibrate(12);
+    await Sync.write({ kind: tileDef.id });
+    await renderSelfSent();
+    Sync.run().then(renderSelfSent);
+  }
+
+  /** What they sent recently, and who has seen it. */
+  async function renderSelfSent() {
+    const all = await Sync.resolved();
+    const mine = all
+      .filter(e => Packs.isCheckin(e.kind))
+      .slice(0, 3);
+    const acks = ackIndex(all);
+
+    const box = $('selfSent');
+    if (!mine.length) { box.hidden = true; return; }
+    UI.clear(box);
+    box.hidden = false;
+
+    for (const e of mine) {
+      const seen = acks.get(e.id);
+      box.append(UI.el('div', { class: 'sent' + (seen ? ' is-seen' : '') },
+        UI.el('span', { class: 'sent-k', text: Packs.label(e.kind) }),
+        UI.el('span', { class: 'sent-t', text: UI.time(e.occurredAt) }),
+        seen
+          ? UI.el('span', { class: 'sent-ack' }, UI.icon('i-check', 'ic'),
+              `${firstName(seen.authorName) || 'Someone'} saw it`)
+          : UI.el('span', { class: 'sent-wait', text: 'Sent' }),
+      ));
+    }
+  }
+
+  /** entryId -> the ack that answered it. First one wins. */
+  function ackIndex(entries) {
+    const m = new Map();
+    for (const e of entries) {
+      if (e.kind !== 'ack' || !e.ackFor) continue;
+      const prev = m.get(e.ackFor);
+      if (!prev || e.occurredAt < prev.occurredAt) m.set(e.ackFor, e);
+    }
+    return m;
+  }
+
+  async function openSelfHistory() {
+    const all = await Sync.resolved();
+    const acks = ackIndex(all);
+    const mine = all.filter(e => Packs.isCheckin(e.kind));
+
+    const box = UI.el('div', {});
+    if (!mine.length) {
+      box.append(UI.el('div', { class: 'empty' },
+        UI.el('strong', { text: 'Nothing yet' }),
+        'Anything you send shows up here.'));
+    }
+
+    // Read-only. No editing, no deleting, no tapping through to a form —
+    // an accidental delete from this screen would be invisible to everyone.
+    let lastDay = null;
+    for (const e of mine) {
+      const day = UI.dayKey(e.occurredAt);
+      if (day !== lastDay) {
+        lastDay = day;
+        box.append(UI.el('div', { class: 'day-h' },
+          UI.relativeDay(day) || UI.dayLong(e.occurredAt)));
+      }
+      const seen = acks.get(e.id);
+      box.append(UI.el('div', { class: 'histrow' },
+        UI.el('span', { class: 'ent-t', text: UI.time(e.occurredAt) }),
+        UI.el('span', { class: 'hist-k', text: Packs.label(e.kind) }),
+        seen ? UI.el('span', { class: 'sent-ack' }, UI.icon('i-check', 'ic'),
+                 `${firstName(seen.authorName) || 'Someone'} saw it`) : null,
+      ));
+    }
+
+    UI.openSheet('What you sent', box);
   }
 
   // ── chrome ────────────────────────────────────────────────────────────
@@ -352,7 +494,7 @@ const App = (() => {
       Packs.tilesFor(S.recipient.packs), S.recipient.tiles);
     UI.renderTiles($('tiles'), tiles, logTile);
 
-    const all = await Sync.resolved();
+    const all = (await Sync.resolved()).filter(e => e.kind !== 'ack');
     const key = UI.todayKey();
     const today = all.filter(e => UI.dayKey(e.occurredAt) === key);
 
@@ -563,6 +705,7 @@ const App = (() => {
   // ── entry detail ──────────────────────────────────────────────────────
 
   async function openEntry(e) {
+    if (e.kind === 'ack') return;      // nothing to open on an acknowledgement
     const tileDef = Packs.tile(e.kind);
     const body = UI.el('div', {});
 
@@ -597,6 +740,27 @@ const App = (() => {
         UI.el('h3', { class: 'subtitle', text: 'Family note' }), note, add));
     }
 
+    // Acknowledging is the whole point of the check-in pack: without it the
+    // person is pressing a button into a void, and the second time they
+    // will not bother. The first ack closes it for the whole household.
+    if (Packs.isCheckin(e.kind) && S.role !== 'self') {
+      const all  = await Sync.resolved();
+      const seen = ackIndex(all).get(e.id);
+      if (seen) {
+        body.append(UI.el('p', { class: 'viewnote' },
+          `${seen.authorName || 'Someone'} already let them know this was seen.`));
+      } else {
+        const ackBtn = UI.el('button', { class: 'btn', type: 'button' },
+          'Let them know I saw this');
+        ackBtn.onclick = async () => {
+          ackBtn.disabled = true;
+          await Sync.write({ kind: 'ack', ackFor: e.id, occurredAt: Date.now() });
+          UI.closeSheet(true); refresh(); UI.toast('They will see that you saw it');
+        };
+        body.append(UI.el('div', { class: 'panel' }, ackBtn));
+      }
+    }
+
     const del = UI.el('button', { class: 'linky', type: 'button' }, 'Remove this entry');
     del.onclick = async () => {
       if (!confirm('Remove this entry from the log?')) return;
@@ -611,7 +775,7 @@ const App = (() => {
   // ── full log ──────────────────────────────────────────────────────────
 
   async function renderFullLog() {
-    const all   = await Sync.resolved();
+    const all   = (await Sync.resolved()).filter(e => e.kind !== 'ack');
     const kinds = [...new Set(all.map(e => e.kind))];
 
     const bar = UI.clear($('logFilter'));
@@ -845,6 +1009,8 @@ const App = (() => {
     }
 
     renderUnits();
+    renderNotifications();
+    renderTileEditor();
 
     $('setRecipName').textContent = S.recipient.displayName;
     $('setName').value = S.recipient.displayName;
@@ -897,6 +1063,8 @@ const App = (() => {
       b.onclick = async () => {
         await Units.applyPreset(b.dataset.preset);
         renderUnits();
+    renderNotifications();
+    renderTileEditor();
         refresh();
       };
     }
@@ -919,6 +1087,111 @@ const App = (() => {
       }
       row.append(seg);
       host.append(row);
+    }
+  }
+
+
+  /**
+   * Notifications. Only meaningful once somebody on the log can check in,
+   * so the panel says so rather than offering a switch that does nothing.
+   */
+  async function renderNotifications() {
+    const host = UI.clear($('pushBox'));
+    let cfg = {};
+    try { cfg = await Api.config(); } catch {}
+
+    if (!cfg.pushEnabled) {
+      host.append(UI.el('p', { class: 'viewnote',
+        text: 'Notifications are not set up on the server yet. See tools/vapid-keys.js in the repo.' }));
+      return;
+    }
+    if (!Push.supported()) {
+      host.append(UI.el('p', { class: 'viewnote',
+        text: 'This browser cannot do notifications.' }));
+      return;
+    }
+    if (Push.needsInstall()) {
+      host.append(UI.el('p', { class: 'viewnote',
+        text: 'On iPhone, notifications only work once the app is on your home screen. Tap the share icon, then Add to Home Screen, and open it from there.' }));
+      return;
+    }
+
+    const sub = await Push.current();
+    if (sub) {
+      host.append(UI.el('p', { class: 'viewnote',
+        text: 'On for this device. You will be told when someone checks in, and told nothing once anyone has answered it.' }));
+      const off = UI.el('button', { class: 'btn btn-quiet', type: 'button' }, 'Turn off on this device');
+      off.onclick = async () => { await Push.disable(S.recipient.id); renderNotifications(); };
+      host.append(off);
+      return;
+    }
+
+    const on = UI.el('button', { class: 'btn', type: 'button' }, 'Turn on notifications');
+    on.onclick = async () => {
+      on.disabled = true;
+      const r = await Push.enable(S.recipient.id, cfg.vapidPublicKey);
+      if (!r.ok) UI.toast(r.reason);
+      renderNotifications();
+    };
+    host.append(on);
+  }
+
+  /**
+   * Rename and hide tiles. Ids are permanent; labels are not — so a family
+   * can put their own words on the buttons without breaking a single
+   * historical entry.
+   *
+   * Per recipient, not per device: everyone reading the log should see the
+   * same words, which is the opposite of the units preference.
+   */
+  function renderTileEditor() {
+    const host = UI.clear($('tileEditor'));
+    if (S.role === 'caregiver' || S.role === 'self') {
+      host.append(UI.el('p', { class: 'viewnote',
+        text: 'Only the family can change the buttons.' }));
+      return;
+    }
+
+    const overrides = new Map((S.recipient.tiles || []).map(o => [o.id, { ...o }]));
+    const packs = Packs.tilesFor(S.recipient.packs);
+    const checkin = Packs.byId('checkin');
+    const onCheckin = (S.recipient.packs || []).includes('checkin');
+    const list = onCheckin ? [...packs, ...checkin.tiles] : packs;
+
+    const save = async () => {
+      S.recipient.tiles = [...overrides.values()]
+        .filter(o => o.label || o.hidden || o.order != null);
+      await Store.kvSet('recipient', S.recipient);
+      try { await Api.updateRecip(S.recipient.id, { tiles: S.recipient.tiles }); }
+      catch { UI.toast('Saved here. Will sync when connected.'); }
+    };
+
+    for (const t of list) {
+      const o = overrides.get(t.id) || { id: t.id };
+      overrides.set(t.id, o);
+
+      const name = UI.el('input', { class: 'field tinyfield', type: 'text',
+        maxlength: '40', placeholder: t.label });
+      name.value = o.label || '';
+      name.onchange = async () => {
+        const v = name.value.trim();
+        if (v && v !== t.label) o.label = v; else delete o.label;
+        await save(); refresh();
+      };
+
+      const hide = UI.el('input', { type: 'checkbox' });
+      hide.checked = !!o.hidden;
+      hide.onchange = async () => {
+        if (hide.checked) o.hidden = true; else delete o.hidden;
+        await save(); refresh();
+      };
+
+      host.append(UI.el('div', { class: 'tilerow' },
+        UI.icon(t.icon, 'ic'),
+        UI.el('span', { class: 'tilerow-n', text: t.label }),
+        name,
+        UI.el('label', { class: 'tilerow-h', title: 'Hide' }, hide, 'Hide'),
+      ));
     }
   }
 

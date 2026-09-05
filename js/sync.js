@@ -78,7 +78,7 @@ const Sync = (() => {
    * is fire-and-forget.
    */
   async function write({ kind, occurredAt, body, fields, whatWorked,
-                         visibility, supersedes, parentId, deleted }) {
+                         visibility, supersedes, parentId, deleted, ackFor }) {
     const entry = {
       id:          uuid(),
       recipientId: rid,
@@ -97,6 +97,7 @@ const Sync = (() => {
       visibility:  role === 'caregiver' ? 'shared' : (visibility || 'shared'),
       supersedes:  supersedes ?? null,
       parentId:    parentId   ?? null,
+      ackFor:      ackFor     ?? null,
       deleted:     deleted ? 1 : 0,
       pending:     1,
     };
@@ -152,7 +153,7 @@ const Sync = (() => {
       id: e.id, kind: e.kind, occurredAt: e.occurredAt,
       body: e.body, fields: e.fields, whatWorked: e.whatWorked,
       visibility: e.visibility, supersedes: e.supersedes,
-      parentId: e.parentId, deleted: e.deleted,
+      parentId: e.parentId, ackFor: e.ackFor, deleted: e.deleted,
     }));
 
     const res = await Api.writeEntries(rid, batch);
@@ -270,7 +271,12 @@ const Sync = (() => {
 
     const roots = [];
     const notes = [];
-    for (const e of live) (e.parentId ? notes : roots).push(e);
+    for (const e of live) {
+      // Acknowledgements are metadata on a check-in, not entries in the
+      // log. They surface as "Dad saw it", never as their own row.
+      if (e.kind === 'ack') { roots.push(e); continue; }
+      (e.parentId ? notes : roots).push(e);
+    }
 
     const byId = new Map(roots.map(e => [e.id, { ...e, notes: [] }]));
     for (const n of notes) {

@@ -208,6 +208,79 @@ const Packs = (() => {
       ],
     },
 
+
+    {
+      id: 'checkin',
+      label: 'Check-in (self-report)',
+      note: 'For the person being cared for to say how they are, in one tap. Turns on the simplified screen for anyone in the self role.',
+      selfReport: true,
+      tiles: [
+        // FEELINGS — ordered settled to overwhelmed, not alphabetically.
+        // Intensity ordering is a property of the shipped set: a family who
+        // hides two thirds of a category should still find what they kept
+        // in a sensible order.
+        { id: 'feel_calm',        label: 'Calm',        icon: 'f-calm',        group: 'feeling', tone: 'good' },
+        { id: 'feel_happy',       label: 'Happy',       icon: 'f-happy',       group: 'feeling', tone: 'good' },
+        { id: 'feel_excited',     label: 'Excited',     icon: 'f-excited',     group: 'feeling', tone: 'good' },
+        { id: 'feel_silly',       label: 'Silly',       icon: 'f-silly',       group: 'feeling', tone: 'good' },
+        { id: 'feel_proud',       label: 'Proud',       icon: 'f-proud',       group: 'feeling', tone: 'good' },
+        { id: 'feel_okay',        label: 'Okay',        icon: 'f-okay',        group: 'feeling' },
+        { id: 'feel_bored',       label: 'Bored',       icon: 'f-bored',       group: 'feeling' },
+        { id: 'feel_tired',       label: 'Tired',       icon: 'f-tired',       group: 'feeling' },
+        { id: 'feel_confused',    label: 'Confused',    icon: 'f-confused',    group: 'feeling' },
+        { id: 'feel_worried',     label: 'Worried',     icon: 'f-worried',     group: 'feeling', tone: 'hard', pool: 'checkin' },
+        { id: 'feel_nervous',     label: 'Nervous',     icon: 'f-nervous',     group: 'feeling', tone: 'hard', pool: 'checkin' },
+        { id: 'feel_sad',         label: 'Sad',         icon: 'f-sad',         group: 'feeling', tone: 'hard', pool: 'checkin' },
+        { id: 'feel_crying',      label: 'Crying',      icon: 'f-crying',      group: 'feeling', tone: 'hard', pool: 'checkin' },
+        { id: 'feel_lonely',      label: 'Lonely',      icon: 'f-lonely',      group: 'feeling', tone: 'hard', pool: 'checkin' },
+        { id: 'feel_embarrassed', label: 'Embarrassed', icon: 'f-embarrassed', group: 'feeling', tone: 'hard', pool: 'checkin' },
+        { id: 'feel_frustrated',  label: 'Frustrated',  icon: 'f-frustrated',  group: 'feeling', tone: 'hard', pool: 'checkin' },
+        { id: 'feel_angry',       label: 'Angry',       icon: 'f-angry',       group: 'feeling', tone: 'hard', pool: 'checkin' },
+        { id: 'feel_furious',     label: 'Furious',     icon: 'f-furious',     group: 'feeling', tone: 'hard', pool: 'checkin' },
+        { id: 'feel_scared',      label: 'Scared',      icon: 'f-scared',      group: 'feeling', tone: 'hard', pool: 'checkin' },
+        { id: 'feel_overwhelmed', label: 'Too much',    icon: 'f-overwhelmed', group: 'feeling', tone: 'hard', pool: 'checkin' },
+        { id: 'feel_shutdown',    label: 'Shut down',   icon: 'f-shutdown',    group: 'feeling', tone: 'hard', pool: 'checkin' },
+
+        // BODY — what the body is doing, which is often easier to name
+        // than a feeling and is the thing that gets missed.
+        { id: 'body_hungry',   label: 'Hungry',       icon: 'b-hungry',   group: 'body' },
+        { id: 'body_thirsty',  label: 'Thirsty',      icon: 'b-thirsty',  group: 'body' },
+        { id: 'body_toilet',   label: 'Toilet',       icon: 'b-toilet',   group: 'body' },
+        { id: 'body_sleepy',   label: 'Sleepy',       icon: 'b-sleepy',   group: 'body' },
+        { id: 'body_itchy',    label: 'Itchy',        icon: 'b-itchy',    group: 'body' },
+        { id: 'body_hot',      label: 'Too hot',      icon: 'b-hot',      group: 'body' },
+        { id: 'body_cold',     label: 'Too cold',     icon: 'b-cold',     group: 'body' },
+        { id: 'body_buzzing',  label: 'Buzzing',      icon: 'b-buzzing',  group: 'body' },
+        { id: 'body_shaky',    label: 'Shaky',        icon: 'b-shaky',    group: 'body' },
+        { id: 'body_heavy',    label: 'Heavy',        icon: 'b-heavy',    group: 'body' },
+        { id: 'body_move',     label: 'Need to move', icon: 'b-move',     group: 'body' },
+        { id: 'body_dizzy',    label: 'Dizzy',        icon: 'b-dizzy',    group: 'body', tone: 'hard', pool: 'checkin' },
+        { id: 'body_head',     label: 'Head hurts',   icon: 'b-head',     group: 'body', tone: 'hard', pool: 'checkin' },
+        { id: 'body_tummy',    label: 'Tummy hurts',  icon: 'b-tummy',    group: 'body', tone: 'hard', pool: 'checkin' },
+        { id: 'body_hurts',    label: 'It hurts',     icon: 'b-hurts',    group: 'body', tone: 'hard', pool: 'checkin' },
+        { id: 'body_sick',     label: 'Feel sick',    icon: 'b-sick',     group: 'body', tone: 'hard', pool: 'checkin' },
+        { id: 'body_chest',    label: 'Tight chest',  icon: 'b-chest',    group: 'body', tone: 'hard', pool: 'checkin' },
+
+        // CAUSES — the group a purely emotional vocabulary would miss, and
+        // often the most actionable: "the room is too bright" is something
+        // somebody can go and fix.
+        { id: 'cause_loud',      label: 'Too loud',      icon: 'c-loud',      group: 'cause', tone: 'hard', pool: 'checkin' },
+        { id: 'cause_bright',    label: 'Too bright',    icon: 'c-bright',    group: 'cause', tone: 'hard', pool: 'checkin' },
+        { id: 'cause_crowd',     label: 'Too many people', icon: 'c-crowd',   group: 'cause', tone: 'hard', pool: 'checkin' },
+        { id: 'cause_busy',      label: 'Too busy',      icon: 'c-busy',      group: 'cause', tone: 'hard', pool: 'checkin' },
+        { id: 'cause_smell',     label: 'Bad smell',     icon: 'c-smell',     group: 'cause', tone: 'hard', pool: 'checkin' },
+        { id: 'cause_clothes',   label: 'Clothes wrong', icon: 'c-clothes',   group: 'cause', tone: 'hard', pool: 'checkin' },
+        { id: 'cause_touch',     label: 'Do not touch',  icon: 'c-touch',     group: 'cause', tone: 'hard', pool: 'checkin' },
+        { id: 'cause_change',    label: 'Plan changed',  icon: 'c-change',    group: 'cause', tone: 'hard', pool: 'checkin' },
+        { id: 'cause_waiting',   label: 'Waiting too long', icon: 'c-waiting', group: 'cause', tone: 'hard', pool: 'checkin' },
+        { id: 'cause_upset_by',  label: 'Someone upset me', icon: 'c-upset-by', group: 'cause', tone: 'hard', pool: 'checkin' },
+        { id: 'cause_dont_get',  label: 'I do not understand', icon: 'c-dont-get', group: 'cause', tone: 'hard', pool: 'checkin' },
+        { id: 'cause_break',     label: 'Need a break',  icon: 'c-break',     group: 'cause' },
+        { id: 'cause_alone',     label: 'Need to be alone', icon: 'c-alone',  group: 'cause' },
+        { id: 'cause_help',      label: 'Need help',     icon: 'c-help',      group: 'cause', tone: 'hard', pool: 'checkin' },
+      ],
+    },
+
     {
       id: 'infant',
       label: 'Baby care',
@@ -233,6 +306,9 @@ const Packs = (() => {
    */
   const SYSTEM = [
     { id: 'thread_note', label: 'Note', icon: 'i-note' },
+    // Written when somebody sees a check-in. Never a tile — nobody logs an
+    // acknowledgement, they make one by responding.
+    { id: 'ack',         label: 'Seen', icon: 'i-check' },
   ];
 
   function byId(packId) { return ALL.find(p => p.id === packId) || null; }
@@ -308,6 +384,30 @@ const Packs = (() => {
     return out;
   }
 
+  /** Category order for the check-in grid. Feelings first because that is
+   *  what most people reach for; causes last because they are the most
+   *  specific. Intensity ordering within each is the shipped tile order. */
+  const GROUPS = [
+    { id: 'feeling', label: 'How I feel' },
+    { id: 'body',    label: 'My body' },
+    { id: 'cause',   label: "What's wrong" },
+  ];
+
+  /** Tiles for the self-report screen, grouped and in shipped order. */
+  function checkinGroups(overrides) {
+    const pack = byId('checkin');
+    if (!pack) return [];
+    const tiles = withOverrides(pack.tiles, overrides);
+    return GROUPS
+      .map(g => ({ ...g, tiles: tiles.filter(t => t.group === g.id) }))
+      .filter(g => g.tiles.length);
+  }
+
+  /** Is this kind a self-reported check-in rather than an observation? */
+  function isCheckin(kind) {
+    return !!byId('checkin')?.tiles.some(t => t.id === kind);
+  }
+
   /** The unit-registry quantity this tile records, if any. */
   function field(kind) { return tile(kind).field || null; }
 
@@ -351,7 +451,8 @@ const Packs = (() => {
   }
 
   return {
-    ALL, SYSTEM, DEFAULT_PACKS, setActive, byId, tilesFor, tile, label, tone, poolFor,
-    field, threshold, cycleStartKinds, withOverrides,
+    ALL, SYSTEM, GROUPS, DEFAULT_PACKS, setActive, byId, tilesFor, tile,
+    label, tone, poolFor, field, threshold, cycleStartKinds, withOverrides,
+    checkinGroups, isCheckin,
   };
 })();
