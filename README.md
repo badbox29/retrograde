@@ -194,6 +194,69 @@ recipient.
     manifest.webmanifest    installable to home screen
     worker.js               Cloudflare Worker (deploy separately)
 
+## Units
+
+Stored values are always canonical: °C, kg, mL, cm, mmol/L, mmHg. The
+Settings toggle changes rendering only.
+
+This is a correctness rule, not a preference. If one person types 101.2 on a
+device set to Fahrenheit and the app stores 101.2, there is nothing in the
+record saying which scale it was, and the next person to read it is guessing.
+So the app stores 38.444…, shows one reader 101.2 °F and the other 38.4 °C,
+and neither of them thinks about it.
+
+The preference belongs to the reader, so it is **device-level, never
+per-recipient**. A night aide and a daughter can want different units for the
+same person and both be right.
+
+US/metric is a preset, not a lock — each quantity can be set on its own.
+Values are never stored rounded; rounding happens at display, or numbers drift
+a little further every time somebody edits them. Printouts and share links
+always print the unit next to the number.
+
+## Emergency thresholds
+
+Where a care team has already given a specific number, crossing it shows
+guidance while the entry is being written:
+
+> Chemotherapy guidance commonly treats a temperature over 38 °C as urgent,
+> especially during the low-count window. Consider notifying their care team.
+
+Guidance, never instruction. The app repeats what they were told; it does not
+decide. Only where a published figure exists — neutropenic fever at 38 °C,
+hypoglycaemia below 3.9 mmol/L — never where guidance is contested.
+
+Comparison happens in canonical units, so a device set to Fahrenheit still
+tests 38 °C against the stored value rather than against 101.2. It shows on
+write, never on reading old entries, and dismissing it is fine: the entry
+keeps a flag so the printout can show a threshold was crossed, which is what
+a doctor actually reads.
+
+## Cycle day
+
+Chemo logs read by cycle day, not calendar day. A cycle start is just an
+entry, and the day is computed from whichever start precedes a log — day 1 is
+the infusion, as oncology counts it.
+
+Nothing is stored, so nothing goes stale. A delayed cycle is a start on a
+different date. A regimen change is a new start. Correcting a mis-entered
+start re-labels every entry after it, because the day was never written down
+to be wrong. And nobody ever types "day 3".
+
+## Renaming and hiding tiles
+
+Ids are permanent; labels are not. `recipient.tiles` overrides display text,
+hides tiles a household never uses, and reorders them:
+
+    tiles: [
+      { id: 'bathroom', label: 'Loo' },
+      { id: 'drink',    hidden: true },
+      { id: 'note',     order: 1 }
+    ]
+
+Per recipient, not per device — everyone reading the log should see the same
+words. Renaming breaks no history, because the id underneath never changes.
+
 ## Adding entry types
 
 Everything lives in `js/packs.js`. Nothing else in the app knows whether it is

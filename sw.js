@@ -5,13 +5,14 @@
  * never cached: the entries live in IndexedDB, and a stale cached response
  * pretending to be fresh is worse than an honest offline state.
  */
-const CACHE = 'carelog-v5';
+const CACHE = 'carelog-v6';
 
 const SHELL = [
   './',
   'index.html',
   'css/app.css',
   'js/store.js',
+  'js/units.js',
   'js/api.js',
   'js/packs.js',
   'js/sync.js',
