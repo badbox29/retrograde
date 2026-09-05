@@ -518,7 +518,11 @@ const App = (() => {
         const t = note.value.trim();
         if (!t) return;
         add.disabled = true;
-        await Sync.write({ kind: 'note', body: t, parentId: e.id, visibility: 'family' });
+        // 'thread_note', not 'note'. They were the same kind, distinguishable
+        // only by parentId being set, which made "how many notes were
+        // logged" unanswerable without a join.
+        await Sync.write({ kind: 'thread_note', body: t, parentId: e.id,
+                           visibility: 'family' });
         UI.closeSheet(true); refresh(); UI.toast('Note added');
       };
       body.append(UI.el('div', { class: 'panel' },

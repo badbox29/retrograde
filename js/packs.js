@@ -31,12 +31,12 @@ const Packs = (() => {
           prompt: 'What did they have?' },
         { id: 'drink',   label: 'Drink',    icon: 'i-drink',
           quick: ['Good amount', 'A little', 'Refused'] },
-        { id: 'meds',    label: 'Medicine', icon: 'i-meds',
+        { id: 'medication', label: 'Medicine', icon: 'i-meds',
           quick: ['Took it', 'Refused', 'Spat it out', 'Given late'],
           prompt: 'Which one, and anything unusual?' },
         { id: 'sleep',   label: 'Sleep',    icon: 'i-sleep',
           quick: ['Slept through', 'Woke once', 'Up a lot', 'Barely slept'] },
-        { id: 'bath',    label: 'Bathroom', icon: 'i-bath',
+        { id: 'bathroom', label: 'Bathroom', icon: 'i-bath',
           quick: ['Fine', 'Needed help', 'Accident'] },
         { id: 'note',    label: 'Note',     icon: 'i-note',
           prompt: 'Anything worth writing down.' },
@@ -54,14 +54,14 @@ const Packs = (() => {
         { id: 'agitated',   label: 'Agitated',    icon: 'i-storm',  tone: 'hard', pool: 'distress',
           quick: ['Restless', 'Angry', 'Shouting', 'Wouldn\u2019t settle'],
           prompt: 'What seemed to set it off?' },
-        { id: 'sundown',    label: 'Sundowning',  icon: 'i-dusk',   tone: 'hard', pool: 'distress',
+        { id: 'sundowning', label: 'Sundowning',  icon: 'i-dusk',   tone: 'hard', pool: 'distress',
           prompt: 'What was it like this evening?' },
         { id: 'repeating',  label: 'Repeating',   icon: 'i-repeat', tone: 'hard', pool: 'distress',
           prompt: 'What was on their mind?' },
         { id: 'wandering',  label: 'Wandering',   icon: 'i-wander', tone: 'hard', pool: 'distress',
           quick: ['Around the house', 'Tried to go out', 'Got outside'],
           prompt: 'Where were they trying to go?' },
-        { id: 'goodmoment', label: 'Good moment', icon: 'i-sun',    tone: 'good',
+        { id: 'good_moment', label: 'Good moment', icon: 'i-sun',   tone: 'good',
           prompt: 'Worth keeping. What happened?' },
       ],
     },
@@ -73,7 +73,8 @@ const Packs = (() => {
       tiles: [
         { id: 'pain',  label: 'Pain',   icon: 'i-pain', tone: 'hard', pool: 'body',
           quick: ['Mild', 'Bad', 'Very bad'], prompt: 'Where, and how long?' },
-        { id: 'temp',  label: 'Temp',   icon: 'i-temp', prompt: 'Reading, and how they seemed.' },
+        { id: 'temperature', label: 'Temp', icon: 'i-temp',
+          prompt: 'Reading, and how they seemed.' },
         { id: 'fall',  label: 'Fall',   icon: 'i-fall', tone: 'hard', pool: 'body',
           quick: ['No injury', 'Bruised', 'Cut', 'Called someone'],
           prompt: 'What happened, and what did you do?' },
@@ -97,11 +98,11 @@ const Packs = (() => {
     {
       id: 'infant',
       label: 'Baby care',
-      note: 'Feeds, nappies, naps, firsts. Turn this on instead of the others.',
+      note: 'Feeds, diapers, naps, firsts. Turn this on instead of the others.',
       tiles: [
         { id: 'feed',      label: 'Feed',      icon: 'i-drink',
           quick: ['Breast', 'Bottle', 'Solids'], prompt: 'How much, how long?' },
-        { id: 'diaper',    label: 'Nappy',     icon: 'i-bath',
+        { id: 'diaper',    label: 'Diaper',    icon: 'i-bath',
           quick: ['Wet', 'Dirty', 'Both', 'Dry'] },
         { id: 'nap',       label: 'Nap',       icon: 'i-sleep', prompt: 'How long?' },
         { id: 'milestone', label: 'First',     icon: 'i-sun', tone: 'good',
@@ -111,6 +112,15 @@ const Packs = (() => {
   ];
 
   const DEFAULT_PACKS = ['basics', 'memory'];
+
+  /**
+   * Kinds the app writes itself. They never appear as tiles, but label()
+   * and tone() must still resolve them or a threaded reply renders as a raw
+   * id. Kept out of ALL so they can never be enabled or curated.
+   */
+  const SYSTEM = [
+    { id: 'thread_note', label: 'Note', icon: 'i-note' },
+  ];
 
   function byId(packId) { return ALL.find(p => p.id === packId) || null; }
 
@@ -140,6 +150,10 @@ const Packs = (() => {
       const t = p.tiles.find(x => x.id === kind);
       if (t) return t;
     }
+    const sys = SYSTEM.find(x => x.id === kind);
+    if (sys) return sys;
+    // An id from a pack this build no longer ships. Render it rather than
+    // lose it — ids are permanent, but the app that wrote them may not be.
     return { id: kind, label: kind, icon: 'i-note' };
   }
 
@@ -155,5 +169,5 @@ const Packs = (() => {
     return out;
   }
 
-  return { ALL, DEFAULT_PACKS, byId, tilesFor, tile, label, tone, poolFor };
+  return { ALL, SYSTEM, DEFAULT_PACKS, byId, tilesFor, tile, label, tone, poolFor };
 })();
