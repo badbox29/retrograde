@@ -580,6 +580,25 @@ const App = (() => {
       wrap.append(row);
     }
 
+    // "What is this?" — for the night aide on their first shift, and for a
+    // family who were handed a word by a consultant and nodded. Deliberately
+    // not shown on the self screen: that screen's whole virtue is having
+    // nothing else on it.
+    const helpText = Packs.help(tileDef.id);
+    if (helpText && S.role !== 'self') {
+      const panel = UI.el('div', { class: 'helppanel', hidden: true },
+        UI.el('p', { text: helpText }));
+      const toggle = UI.el('button', { class: 'helplink', type: 'button' },
+        UI.icon('i-info', 'ic'), UI.el('span', { text: 'What is this?' }));
+      toggle.onclick = () => {
+        panel.hidden = !panel.hidden;
+        toggle.querySelector('span').textContent =
+          panel.hidden ? 'What is this?' : 'Hide';
+        toggle.classList.toggle('is-open', !panel.hidden);
+      };
+      wrap.append(toggle, panel);
+    }
+
     // Numeric field with units. What gets typed is in the reader's unit;
     // what gets stored is always canonical.
     let numIn = null, numUnit = null;
@@ -919,9 +938,29 @@ const App = (() => {
     }));
   }
 
+  /**
+   * Terms actually used in the printed range, defined. An aide reading a
+   * handoff sheet has the same problem as one reading the screen, and a
+   * page at the end costs nothing.
+   */
+  async function buildGlossary(from, to) {
+    const all = await Sync.resolved();
+    const kinds = new Set(all
+      .filter(e => e.visibility !== 'family' && e.kind !== 'ack')
+      .filter(e => e.occurredAt >= from && e.occurredAt < to)
+      .map(e => e.kind));
+
+    return [...kinds]
+      .map(k => ({ term: Packs.label(k), text: Packs.help(k) }))
+      .filter(x => x.text)
+      .sort((a, b) => a.term.localeCompare(b.term));
+  }
+
   async function renderPrint() {
     const host = UI.clear($('printPreview'));
     const days = await buildDays();
+    const from = Date.parse($('prFrom').value + 'T00:00:00Z');
+    const to   = Date.parse($('prTo').value   + 'T00:00:00Z') + 86400000;
 
     host.append(UI.el('div', { class: 'pv-head' },
       UI.el('h1', { text: S.recipient.displayName }),
@@ -944,6 +983,7 @@ const App = (() => {
         }
         host.append(sec);
       }
+      await appendGlossary(host, from, to);
       return;
     }
 
@@ -973,6 +1013,20 @@ const App = (() => {
       host.append(UI.el('section', { class: 'pv-day' },
         UI.el('h2', { text: d.date }), table));
     }
+
+    await appendGlossary(host, from, to);
+  }
+
+  async function appendGlossary(host, from, to) {
+    const terms = await buildGlossary(from, to);
+    if (!terms.length) return;
+    const sec = UI.el('section', { class: 'pv-gloss' },
+      UI.el('h2', { text: 'What these mean' }));
+    for (const t of terms) {
+      sec.append(UI.el('div', { class: 'gloss-i' },
+        UI.el('dt', { text: t.term }), UI.el('dd', { text: t.text })));
+    }
+    host.append(sec);
   }
 
   async function makeShare() {
@@ -980,11 +1034,15 @@ const App = (() => {
     btn.disabled = true;
     try {
       const days = await buildDays();
+      const from = Date.parse($('prFrom').value + 'T00:00:00Z');
+      const to   = Date.parse($('prTo').value   + 'T00:00:00Z') + 86400000;
+      const glossary = await buildGlossary(from, to);
       const { url } = await Api.createShare(S.recipient.id, {
         title:    S.recipient.displayName,
         subtitle: `Care log \u00b7 ${$('prFrom').value} to ${$('prTo').value}`,
         days: days.map(d => ({ date: d.date, items: d.items.map(i => ({
           time: i.time, kind: i.kind, text: i.text })) })),
+        glossary,
       });
       const box = $('shareResult');
       UI.clear(box).append(
