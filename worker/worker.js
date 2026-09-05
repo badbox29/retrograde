@@ -39,6 +39,8 @@
  *   r:<rid>:e:<ts13>:<uuid>       entry — WRITE ONCE
  *   r:<rid>:eid:<uuid>            → full entry key (idempotency index)
  *   r:<rid>:arch:<YYYY-MM>        sealed month, array of entries
+ *   r:<rid>:ackd:<entryId>        marker: this check-in has been answered
+ *   push:<personId>:<hash>        one web push subscription
  *
  * ts13 is SERVER RECEIPT time, zero-padded to 13 digits so lexicographic
  * key order is chronological. It is a sync cursor, not a timestamp anyone
@@ -69,11 +71,7 @@ const MAX_FIELDS_JSON = 8000;
 const SYNC_PAGE       = 400;                 // keys per sync page (subrequest budget)
 const SEAL_PAGE       = 350;                 // entries sealed per invocation
 
-// 'self' is defined here but not yet invitable; the check-in pack (v0.8)
-// turns it on. The predicate handles it now so it cannot be bolted on later
-// against a filter that was never designed for it.
-const ROLES       = ['owner', 'family', 'caregiver'];
-const ALL_ROLES   = ['owner', 'family', 'caregiver', 'self'];
+const ROLES       = ['owner', 'family', 'caregiver', 'self'];
 const VISIBILITIES= ['shared', 'family'];
 
 // ── Response helpers ───────────────────────────────────────────────────────
@@ -206,6 +204,107 @@ async function verifyGoogleJWT(idToken, clientId) {
   }
 }
 
+
+// ── Web push ───────────────────────────────────────────────────────────────
+//
+// Notifications carry NO PAYLOAD. The push is a tickle: the service worker
+// wakes, fetches the unanswered check-ins itself, and builds the notification
+// locally.
+//
+// That is a deliberate trade. Sending a payload means implementing RFC 8291
+// (ECDH key agreement, HKDF, aes128gcm) inside the worker, and getting any of
+// it subtly wrong means notifications that silently never arrive. It also
+// means the content of a care log passes through a third-party push service.
+// A tickle needs only the VAPID signature, and the content never leaves the
+// household's own devices.
+//
+// Setup:
+//   node tools/vapid-keys.js
+//   VAPID_PUBLIC_KEY   -> Text variable
+//   VAPID_PRIVATE_JWK  -> Secret
+//   VAPID_SUBJECT      -> Text variable, e.g. mailto:you@example.com
+
+function b64urlToBytes(s) {
+  const pad = s.replace(/-/g, '+').replace(/_/g, '/');
+  const bin = atob(pad + '='.repeat((4 - pad.length % 4) % 4));
+  return Uint8Array.from(bin, c => c.charCodeAt(0));
+}
+
+function bytesToB64url(b) {
+  return btoa(String.fromCharCode(...new Uint8Array(b)))
+    .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+/** VAPID JWT, ES256, signed with the private key from the secret. */
+async function vapidHeader(env, endpoint) {
+  if (!env.VAPID_PRIVATE_JWK || !env.VAPID_PUBLIC_KEY) return null;
+  const aud = new URL(endpoint).origin;
+
+  const header  = bytesToB64url(new TextEncoder().encode(
+    JSON.stringify({ typ: 'JWT', alg: 'ES256' })));
+  const payload = bytesToB64url(new TextEncoder().encode(JSON.stringify({
+    aud,
+    exp: Math.floor(Date.now() / 1000) + 12 * 60 * 60,
+    sub: env.VAPID_SUBJECT || 'mailto:admin@example.com',
+  })));
+
+  const key = await crypto.subtle.importKey(
+    'jwk', JSON.parse(env.VAPID_PRIVATE_JWK),
+    { name: 'ECDSA', namedCurve: 'P-256' }, false, ['sign']
+  );
+  const sig = await crypto.subtle.sign(
+    { name: 'ECDSA', hash: 'SHA-256' }, key,
+    new TextEncoder().encode(`${header}.${payload}`)
+  );
+
+  return `vapid t=${header}.${payload}.${bytesToB64url(sig)}, k=${env.VAPID_PUBLIC_KEY}`;
+}
+
+/**
+ * Wake every other active member of the log.
+ *
+ * Never the author — nobody needs telling about their own check-in — and
+ * never anyone in the `self` role, since they must not learn anything about
+ * other people on the log.
+ */
+async function pushToHousehold(env, rid, authorId, entries) {
+  const kv = env[KV_BINDING];
+  const members = await kv.list({ prefix: `r:${rid}:m:` });
+
+  for (const k of members.keys) {
+    const m = await kv.get(k.name, { type: 'json' });
+    if (!m || m.status !== 'active') continue;
+    if (m.personId === authorId) continue;
+    if (m.role === 'self') continue;
+
+    const subs = await kv.list({ prefix: `push:${m.personId}:` });
+    for (const sk of subs.keys) {
+      const sub = await kv.get(sk.name, { type: 'json' });
+      if (!sub?.endpoint) continue;
+      try {
+        const auth = await vapidHeader(env, sub.endpoint);
+        if (!auth) return;
+        const res = await fetch(sub.endpoint, {
+          method: 'POST',
+          headers: { 'Authorization': auth, 'TTL': '3600', 'Content-Length': '0' },
+        });
+        // 404/410 mean the browser threw the subscription away.
+        if (res.status === 404 || res.status === 410) await kv.delete(sk.name);
+      } catch (e) {
+        console.error('[push]', e);
+      }
+    }
+  }
+}
+
+/** Marked at write time so the worker never has to re-derive it. */
+function isSelfReport(entry) { return entry.selfReport === 1; }
+
+async function subKey(personId, endpoint) {
+  const d = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(endpoint));
+  return `push:${personId}:${bytesToB64url(d).slice(0, 22)}`;
+}
+
 // ── Sessions ───────────────────────────────────────────────────────────────
 // Opaque 256-bit tokens, NOT Google ID tokens. A Google idToken expires in
 // about an hour; using it as the session credential is what forced the
@@ -329,8 +428,12 @@ async function handleAuth(url, method, request, env, cors, ip) {
   // GET /auth/config — client never hardcodes the Google client id
   if (path === '/auth/config' && method === 'GET') {
     return ok({
-      googleClientId: env.GOOGLE_CLIENT_ID || '',
-      googleEnabled:  !!env.GOOGLE_CLIENT_ID,
+      // Trimmed: a trailing space in this variable produces a Google
+      // invalid_client error that looks nothing like a whitespace problem.
+      googleClientId: (env.GOOGLE_CLIENT_ID || '').trim(),
+      googleEnabled:  !!(env.GOOGLE_CLIENT_ID || '').trim(),
+      vapidPublicKey: (env.VAPID_PUBLIC_KEY || '').trim(),
+      pushEnabled:    !!(env.VAPID_PUBLIC_KEY && env.VAPID_PRIVATE_JWK),
     }, cors);
   }
 
@@ -416,7 +519,7 @@ async function handleAuth(url, method, request, env, cors, ip) {
     const body = await readJson(request);
     if (!body?.idToken) return err('idToken required', 400, cors);
 
-    const p = await verifyGoogleJWT(body.idToken, env.GOOGLE_CLIENT_ID);
+    const p = await verifyGoogleJWT(body.idToken, (env.GOOGLE_CLIENT_ID || '').trim());
     if (!p) return err('Invalid or expired Google token', 401, cors);
 
     // Keyed on `sub`, never email. Email changes; sub does not.
@@ -450,7 +553,7 @@ async function handleAuth(url, method, request, env, cors, ip) {
     const body = await readJson(request);
     if (!body?.idToken) return err('idToken required', 400, cors);
 
-    const p = await verifyGoogleJWT(body.idToken, env.GOOGLE_CLIENT_ID);
+    const p = await verifyGoogleJWT(body.idToken, (env.GOOGLE_CLIENT_ID || '').trim());
     if (!p) return err('Invalid or expired Google token', 401, cors);
 
     const existing = await kv.get(`c:google:${p.sub}`, { type: 'text' });
@@ -519,6 +622,7 @@ function validateEntry(e) {
     if (JSON.stringify(e.fields).length > MAX_FIELDS_JSON) return 'fields too large';
   }
   if (e.supersedes != null && !isId(e.supersedes, 8, 64)) return 'invalid supersedes';
+  if (e.ackFor     != null && !isId(e.ackFor,     8, 64)) return 'invalid ackFor';
   if (e.parentId   != null && !isId(e.parentId,   8, 64)) return 'invalid parentId';
   return null;
 }
@@ -528,7 +632,7 @@ function validateEntry(e) {
 // Write-once. Retries are idempotent via the r:<rid>:eid:<uuid> index, so a
 // flaky connection on a phone in a nursing home can resend the whole batch
 // safely.
-async function handleWriteEntries(request, env, rid, cors, access) {
+async function handleWriteEntries(request, env, rid, cors, access, ctx) {
   const kv = env[KV_BINDING];
 
   if (!(await rateLimit(env, `w:${access.sess.sessionId}`, WRITE_RATE_LIMIT, WRITE_RATE_WIN))) {
@@ -574,12 +678,38 @@ async function handleWriteEntries(request, env, rid, cors, access) {
       visibility,
       supersedes:  raw.supersedes ?? null,
       parentId:    raw.parentId   ?? null,
+      // Who this acknowledges. Set on 'ack' entries only.
+      ackFor:      raw.ackFor     ?? null,
+      // Stamped by the server from the role, never trusted from the client.
+      selfReport:  access.role === 'self' ? 1 : 0,
       deleted:     raw.deleted ? 1 : 0,
     };
 
     await kv.put(entryKey, JSON.stringify(entry));
     await kv.put(idxKey, entryKey);
+
+    // The FIRST acknowledgement closes a check-in, for everyone. Others
+    // keep the notification they were already sent — it is still there if
+    // they look — but nothing further goes out. Nobody gets pestered about
+    // something that has already been handled.
+    if (entry.kind === 'ack' && entry.ackFor) {
+      await kv.put(`r:${rid}:ackd:${entry.ackFor}`, JSON.stringify({
+        by: entry.authorId, byName: entry.authorName, at: entry.createdAt,
+      }));
+    }
+
+    // A self-reported check-in wakes everyone else on the log.
+    if (access.role === 'self' && !entry.deleted) {
+      notify.push(entry);
+    }
+
     written.push(entry);
+  }
+
+  // Fire and forget: a slow push service must never delay the write
+  // acknowledgement getting back to a phone.
+  if (notify.length && ctx) {
+    ctx.waitUntil(pushToHousehold(env, rid, access.sess.personId, notify));
   }
 
   return ok({ written, skipped, cursor: ts13() }, cors);
@@ -971,7 +1101,51 @@ export default {
         }
 
         if (tail[0] === 'entries' && method === 'POST') {
-          return await handleWriteEntries(request, env, rid, cors, access);
+          return await handleWriteEntries(request, env, rid, cors, access, ctx);
+        }
+
+
+        // ── push ────────────────────────────────────────────────
+        if (tail[0] === 'push' && tail[1] === 'subscribe' && method === 'POST') {
+          const body = await readJson(request);
+          if (!body?.endpoint || typeof body.endpoint !== 'string') {
+            return err('endpoint required', 400, cors);
+          }
+          const k = await subKey(access.sess.personId, body.endpoint);
+          await env[KV_BINDING].put(k, JSON.stringify({
+            endpoint: body.endpoint, personId: access.sess.personId,
+            recipientId: rid, createdAt: Date.now(),
+          }));
+          return ok({ ok: true }, cors);
+        }
+
+        if (tail[0] === 'push' && tail[1] === 'unsubscribe' && method === 'POST') {
+          const body = await readJson(request);
+          if (body?.endpoint) {
+            await env[KV_BINDING].delete(await subKey(access.sess.personId, body.endpoint));
+          }
+          return ok({ ok: true }, cors);
+        }
+
+        // Check-ins nobody has answered yet. The service worker calls this
+        // after a push wakes it, because the push itself carries no payload.
+        if (tail[0] === 'unanswered' && method === 'GET') {
+          if (access.role === 'self') return err('Not permitted', 403, cors);
+          const listed = await env[KV_BINDING].list({
+            prefix: `r:${rid}:e:`, limit: 60,
+          });
+          const out = [];
+          for (const k of [...listed.keys].reverse()) {
+            const v = await env[KV_BINDING].get(k.name, { type: 'json' });
+            if (!v || v.deleted) continue;
+            if (!isSelfReport(v)) continue;
+            const ackd = await env[KV_BINDING].get(`r:${rid}:ackd:${v.id}`);
+            if (ackd) continue;
+            out.push({ id: v.id, kind: v.kind, authorName: v.authorName,
+                       occurredAt: v.occurredAt });
+            if (out.length >= 5) break;
+          }
+          return ok({ entries: out }, cors);
         }
 
         if (tail[0] === 'sync' && method === 'GET') {
