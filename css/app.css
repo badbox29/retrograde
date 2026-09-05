@@ -538,3 +538,59 @@ textarea.field { min-height: 5.5rem; resize: vertical; line-height: 1.45; }
     transition-duration: .01ms !important;
   }
 }
+
+/* ── Readings, thresholds, cycle day (v0.7) ──────────────────────────── */
+
+.ent-read {
+  margin-left: .4rem; font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.ent-crossed {
+  display: flex; align-items: center; gap: .35rem;
+  margin-top: .3rem; padding: .3rem .55rem;
+  background: var(--brick-sk); border-radius: var(--r-sm);
+  color: var(--brick); font-size: .8rem; font-weight: 700;
+}
+.ent-crossed .ic { width: 16px; height: 16px; }
+
+.day-cycle {
+  margin-left: auto; padding: .1rem .5rem;
+  background: var(--teal-sk); border-radius: 999px;
+  color: var(--teal); letter-spacing: .04em; font-size: .7rem;
+}
+
+input.num { font-variant-numeric: tabular-nums; font-size: 1.15rem; font-weight: 700; }
+
+/* Guidance, not an alarm. Brick rather than red, and no icon larger than
+   the text — this points at a decision, it does not make one. */
+.threshold {
+  margin: .6rem 0 0; padding: .75rem .9rem;
+  background: var(--brick-sk);
+  border: 1.5px solid color-mix(in srgb, var(--brick) 35%, transparent);
+  border-radius: var(--r-md);
+}
+.threshold-h {
+  display: flex; align-items: center; gap: .4rem;
+  color: var(--brick); font-weight: 700; font-size: .82rem;
+  letter-spacing: .04em; text-transform: uppercase; margin-bottom: .35rem;
+}
+.threshold-h .ic { width: 17px; height: 17px; }
+.threshold p { margin: 0; font-size: .9rem; }
+.threshold small { display: block; margin-top: .4rem; color: var(--ink-3);
+                   font-size: .74rem; }
+
+.units { display: grid; gap: .5rem; }
+.unitrow {
+  display: flex; align-items: center; gap: .8rem;
+  padding: .4rem 0;
+}
+.unitrow > span { flex: 1; font-size: .9rem; }
+.seg-sm { flex: 0 0 auto; margin: 0; gap: .3rem; }
+.seg-sm .seg-b { min-height: 38px; padding: 0 .7rem; flex: 0 0 auto;
+                 font-size: .82rem; }
+
+@media print {
+  .ent-crossed { background: none; color: #000; }
+  .threshold { display: none; }
+}
