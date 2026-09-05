@@ -698,3 +698,37 @@ input.num { font-variant-numeric: tabular-nums; font-size: 1.15rem; font-weight:
   font-size: .74rem; color: var(--ink-3); cursor: pointer;
 }
 .tilerow-h input { width: 17px; height: 17px; accent-color: var(--teal); }
+
+/* ── "What is this?" and the printed glossary (v0.9) ─────────────────── */
+
+.helplink {
+  display: flex; align-items: center; gap: .35rem;
+  min-height: 40px; margin: 0 0 .2rem; padding: 0;
+  background: none; border: 0; color: var(--teal);
+  font-size: .84rem; font-weight: 700; cursor: pointer;
+}
+.helplink .ic { width: 17px; height: 17px; }
+.helplink.is-open { color: var(--ink-2); }
+
+.helppanel {
+  margin: 0 0 1rem; padding: .8rem .95rem;
+  background: var(--card); border: 1.5px solid var(--rule);
+  border-left: 3px solid var(--teal); border-radius: var(--r-md);
+}
+.helppanel p { margin: 0; font-size: .89rem; line-height: 1.5; color: var(--ink-2); }
+
+.pv-gloss { margin-top: 1.8rem; padding-top: 1.1rem;
+            border-top: 1px solid var(--rule); }
+.pv-gloss h2 {
+  font-size: .72rem; letter-spacing: .1em; text-transform: uppercase;
+  color: var(--ink-3); margin: 0 0 .7rem;
+}
+.gloss-i { margin-bottom: .7rem; break-inside: avoid; }
+.gloss-i dt { font-weight: 700; font-size: .84rem; }
+.gloss-i dd { margin: 0; font-size: .82rem; color: var(--ink-2); }
+
+@media print {
+  /* The glossary is reference, so it goes at the back rather than
+     interrupting the log itself. */
+  .pv-gloss { break-before: page; padding-top: 0; border-top: 0; }
+}
