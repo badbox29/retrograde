@@ -594,3 +594,107 @@ input.num { font-variant-numeric: tabular-nums; font-size: 1.15rem; font-weight:
   .ent-crossed { background: none; color: #000; }
   .threshold { display: none; }
 }
+
+/* ── Self-report screen (v0.8) ───────────────────────────────────────── */
+
+/* Deliberately not the main app's chrome. One screen, big targets, no
+   tabs to get lost in. Someone reaching for this is not in a state to
+   navigate anything. */
+.selfshell { min-height: 100dvh; padding-top: env(safe-area-inset-top); }
+
+.selfbar {
+  position: sticky; top: 0; z-index: 20;
+  display: flex; align-items: center; gap: .5rem;
+  padding: .6rem .6rem .6rem 1.15rem;
+  background: color-mix(in srgb, var(--paper) 90%, transparent);
+  backdrop-filter: blur(12px); border-bottom: 1px solid var(--rule);
+}
+.selfbar-t {
+  flex: 1; margin: 0; font-family: var(--disp); font-weight: 600;
+  font-size: 1.35rem; font-variation-settings: "SOFT" 30;
+}
+
+.selfwrap { max-width: 34rem; margin: 0 auto; padding: 1rem 1rem 3rem; }
+
+.selfgroups { display: grid; gap: 1.6rem; }
+.selfgroup-h {
+  font-size: .74rem; letter-spacing: .13em; text-transform: uppercase;
+  color: var(--ink-3); font-weight: 700; margin: 0 0 .6rem;
+  padding-bottom: .35rem; border-bottom: 1px solid var(--rule);
+}
+
+.selftiles { display: grid; gap: .6rem; grid-template-columns: repeat(3, 1fr); }
+@media (min-width: 26rem) { .selftiles { grid-template-columns: repeat(4, 1fr); } }
+
+.selftile {
+  position: relative; overflow: hidden;
+  display: grid; gap: .4rem; place-items: center; align-content: center;
+  min-height: 6.6rem; padding: .8rem .3rem;
+  background: var(--card); color: var(--ink);
+  border: 1.5px solid var(--rule); border-radius: var(--r-md);
+  cursor: pointer; text-align: center;
+  transition: transform .08s ease;
+}
+.selftile:active { transform: scale(.94); }
+.selftile span { font-size: .76rem; font-weight: 700; line-height: 1.15; }
+.bigic { width: 34px; height: 34px; stroke-width: 1.5; }
+.selftile .ic { color: var(--ink-2); }
+.selftile[data-tone="good"] { border-color: color-mix(in srgb, var(--gold) 40%, var(--rule)); }
+.selftile[data-tone="good"] .ic { color: var(--gold); }
+.selftile[data-tone="hard"] { border-color: color-mix(in srgb, var(--brick) 32%, var(--rule)); }
+.selftile[data-tone="hard"] .ic { color: var(--brick); }
+.selftile.just-logged::after {
+  content: ""; position: absolute; inset: 0;
+  background: var(--teal-sk); animation: wash .55s ease-out forwards;
+}
+
+/* What they sent, and whether anyone has answered. This block is the
+   difference between communicating and shouting into a void. */
+.selfsent { display: grid; gap: .4rem; margin-bottom: 1.4rem; }
+.sent {
+  display: flex; align-items: center; gap: .6rem;
+  padding: .6rem .85rem; background: var(--card);
+  border: 1.5px solid var(--rule); border-radius: var(--r-md);
+  font-size: .9rem;
+}
+.sent.is-seen { border-color: color-mix(in srgb, var(--teal) 45%, var(--rule));
+                background: var(--teal-sk); }
+.sent-k { font-weight: 700; }
+.sent-t { color: var(--ink-3); font-size: .8rem;
+          font-variant-numeric: tabular-nums; }
+.sent-wait { margin-left: auto; color: var(--ink-3); font-size: .8rem; }
+.sent-ack {
+  margin-left: auto; display: flex; align-items: center; gap: .3rem;
+  color: var(--teal); font-weight: 700; font-size: .82rem;
+}
+.sent-ack .ic { width: 16px; height: 16px; stroke-width: 2.4; }
+
+.selfhistory {
+  display: block; width: 100%; margin-top: 2rem;
+  min-height: var(--tap); background: none; border: 0;
+  color: var(--ink-3); font-weight: 700; font-size: .88rem;
+  cursor: pointer; text-decoration: underline; text-underline-offset: 4px;
+}
+
+.histrow {
+  display: grid; grid-template-columns: 3.9rem 1fr auto; gap: .7rem;
+  padding: .5rem 0; align-items: baseline;
+}
+.hist-k { font-weight: 700; }
+
+/* ── Tile label editor ───────────────────────────────────────────────── */
+
+.tileeditor { display: grid; gap: .4rem; max-height: 26rem; overflow-y: auto; }
+.tilerow {
+  display: flex; align-items: center; gap: .6rem;
+  padding: .4rem 0; border-bottom: 1px solid var(--rule);
+}
+.tilerow .ic { color: var(--ink-3); flex: 0 0 auto; }
+.tilerow-n { flex: 0 0 7rem; font-size: .84rem; color: var(--ink-2);
+             overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tinyfield { min-height: 40px; font-size: .88rem; flex: 1; }
+.tilerow-h {
+  display: flex; align-items: center; gap: .3rem; flex: 0 0 auto;
+  font-size: .74rem; color: var(--ink-3); cursor: pointer;
+}
+.tilerow-h input { width: 17px; height: 17px; accent-color: var(--teal); }
