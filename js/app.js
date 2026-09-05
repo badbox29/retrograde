@@ -840,6 +840,21 @@ const App = (() => {
     const role  = document.querySelector('input[name="invrole"]:checked')?.value;
     const label = $('inviteLabel').value.trim();
     const btn   = $('btnMakeInvite');
+
+    // The self role has nothing to show without the check-in buttons, so
+    // offer to turn them on rather than handing over an empty screen.
+    if (role === 'self' && !(S.recipient.packs || []).includes('checkin')) {
+      if (!confirm('The check-in buttons are not turned on for this log yet, '
+                 + 'so they would open to an empty screen.\n\nTurn them on now?')) {
+        return;
+      }
+      S.recipient.packs = [...new Set([...(S.recipient.packs || []), 'checkin'])];
+      Packs.setActive(S.recipient.packs);
+      await Store.kvSet('recipient', S.recipient);
+      try { await Api.updateRecip(S.recipient.id, { packs: S.recipient.packs }); }
+      catch { UI.toast('Could not save that. Try again when connected.'); return; }
+    }
+
     btn.disabled = true;
     try {
       const { invite } = await Api.createInvite(S.recipient.id, role, label);
@@ -856,7 +871,9 @@ const App = (() => {
             await navigator.clipboard.writeText(url);
             UI.toast('Link copied');
           } }, navigator.share ? 'Share' : 'Copy link')),
-        UI.el('p', { class: 'work-m', text: 'Good for 14 days, and only works once.' }),
+        UI.el('p', { class: 'work-m', text: role === 'self'
+          ? 'Open this on their own phone. Good for 14 days, and only works once.'
+          : 'Good for 14 days, and only works once.' }),
       );
       box.hidden = false;
       $('inviteLabel').value = '';
