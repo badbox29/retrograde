@@ -92,13 +92,20 @@ their name, and they are in. No password, no signup form.
 
 ## Roles
 
-| | owner | family | caregiver |
-|---|---|---|---|
-| Read and write shared entries | ✓ | ✓ | ✓ |
-| See "what helped" | ✓ | ✓ | ✓ |
-| Family-only entries and notes | ✓ | ✓ | — |
-| Invite and remove people | ✓ | — | — |
-| Rename, change time zone | ✓ | — | — |
+| | owner | family | caregiver | self |
+|---|---|---|---|---|
+| Read and write shared entries | ✓ | ✓ | ✓ | — |
+| See "what helped" | ✓ | ✓ | ✓ | — |
+| Family-only entries and notes | ✓ | ✓ | — | — |
+| Invite and remove people | ✓ | — | — | — |
+| Rename, change time zone | ✓ | — | — | — |
+| Send check-ins, see own history | ✓ | ✓ | ✓ | ✓ |
+
+**`self`** is the person being cared for. They get a different app entirely:
+one screen of feeling buttons, and a small history link. They see only what
+they wrote — never a caregiver's entries, never family notes, never anything
+anyone has written *about* them. That separation is enforced server-side by
+the same predicate as everything else.
 
 Removing someone never deletes what they wrote. Their shift notes stay in the
 record, attributed to them. Reinstating is flipping a status back.
@@ -185,6 +192,8 @@ recipient.
     index.html              shell, SVG icon sprite, all views
     css/app.css             design system, light and dark
     js/store.js             IndexedDB, non-extractable key, seal/unseal
+    js/units.js             unit registry, canonical storage, conversion
+    js/push.js              web push subscription
     js/api.js               worker client
     js/packs.js             entry templates — pure data
     js/sync.js              offline queue, cursor, supersede resolution
@@ -256,6 +265,50 @@ hides tiles a household never uses, and reorders them:
 
 Per recipient, not per device — everyone reading the log should see the same
 words. Renaming breaks no history, because the id underneath never changes.
+
+## Check-in
+
+For the person being cared for to say how they are, in one tap. Built after a
+colleague's autistic daughter saw the tile grid and asked for a feelings
+panel — but it is not an autism feature. It serves anyone who cannot easily
+get it out: aphasia after a stroke, early dementia, a child after surgery.
+
+52 tiles in three categories — how I feel, my body, what's wrong — ordered by
+intensity within each rather than alphabetically. The third group is the one a
+purely emotional vocabulary misses, and often the most actionable: "the room
+is too bright" is something somebody can go and fix.
+
+**A tap commits immediately here**, with no form and no Save. That reverses
+the rule everywhere else in the app, deliberately: somebody pressing this is
+dysregulated, and friction costs more than a spurious entry does.
+
+**Acknowledgement closes the loop.** They tap; a moment later their screen
+says "Dad saw it", named rather than anonymous. The first acknowledgement
+stops reminders for the whole household — everyone else keeps the
+notification they already had, but nobody gets pestered about something
+already handled.
+
+Labels are editable per recipient (Settings → The words on the buttons) so a
+family can put their own words on the buttons. Ids never change, so renaming
+breaks no history.
+
+## Notifications
+
+    node tools/vapid-keys.js
+
+Prints three values for the Worker: `VAPID_PUBLIC_KEY` and `VAPID_SUBJECT` as
+text variables, `VAPID_PRIVATE_JWK` as a secret. Deploy, then turn them on per
+device in Settings.
+
+The push carries **no payload**. It is a tickle; the service worker wakes,
+fetches what is unanswered, and writes the notification locally. That avoids
+implementing RFC 8291 payload encryption — where a subtle mistake means
+notifications that silently never arrive — and means nothing about the log
+passes through a third-party push service. Only the fact that something
+happened does.
+
+On iPhone this only works for an installed PWA. "Add to Home Screen" is not
+optional there; without it the permission prompt never even appears.
 
 ## Adding entry types
 

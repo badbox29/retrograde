@@ -5,7 +5,7 @@
  * never cached: the entries live in IndexedDB, and a stale cached response
  * pretending to be fresh is worse than an honest offline state.
  */
-const CACHE = 'carelog-v6';
+const CACHE = 'carelog-v7';
 
 const SHELL = [
   './',
@@ -13,6 +13,7 @@ const SHELL = [
   'css/app.css',
   'js/store.js',
   'js/units.js',
+  'js/push.js',
   'js/api.js',
   'js/packs.js',
   'js/sync.js',
@@ -89,3 +90,79 @@ function staleWhileRevalidate(req) {
     })
   );
 }
+
+
+// ── Push ───────────────────────────────────────────────────────────────────
+//
+// The push carries no payload, so this reads the context out of IndexedDB
+// and fetches what is unanswered. Content never passes through the push
+// service; only the fact that something happened does.
+
+function readPushCtx() {
+  return new Promise(resolve => {
+    const q = indexedDB.open('carelog');
+    q.onsuccess = e => {
+      try {
+        const g = e.target.result.transaction('kv', 'readonly')
+                   .objectStore('kv').get('pushCtx');
+        g.onsuccess = () => resolve(g.result || null);
+        g.onerror   = () => resolve(null);
+      } catch { resolve(null); }
+    };
+    q.onerror = () => resolve(null);
+  });
+}
+
+self.addEventListener('push', event => {
+  event.waitUntil((async () => {
+    const ctx = await readPushCtx();
+
+    // userVisibleOnly means a notification is REQUIRED for every push. If
+    // the fetch fails, show something plain rather than nothing — a silent
+    // drop gets the subscription revoked by the browser.
+    let title = 'New check-in';
+    let body  = 'Someone let you know how they are feeling.';
+    let tag   = 'checkin';
+
+    if (ctx?.base && ctx?.session && ctx?.rid) {
+      try {
+        const res = await fetch(`${ctx.base}/r/${ctx.rid}/unanswered`, {
+          headers: { Authorization: `Bearer ${ctx.session}` },
+        });
+        if (res.ok) {
+          const { entries } = await res.json();
+          if (entries?.length) {
+            const first = entries[0];
+            title = `${first.authorName || 'They'} checked in`;
+            body  = entries.length === 1
+              ? String(first.kind || '').replace(/^(feel|body|cause)_/, '').replace(/_/g, ' ')
+              : `${entries.length} check-ins waiting`;
+            tag   = first.id;
+          }
+        }
+      } catch { /* fall through to the plain notification */ }
+    }
+
+    await self.registration.showNotification(title, {
+      body,
+      tag,
+      icon: 'icon-192.png',
+      badge: 'icon-192.png',
+      renotify: false,
+      requireInteraction: false,
+      data: { url: './?checkin=1' },
+    });
+  })());
+});
+
+self.addEventListener('notificationclick', event => {
+  event.notification.close();
+  const url = event.notification.data?.url || './';
+  event.waitUntil((async () => {
+    const all = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+    for (const c of all) {
+      if ('focus' in c) { await c.focus(); c.postMessage({ type: 'checkin-open' }); return; }
+    }
+    if (self.clients.openWindow) await self.clients.openWindow(url);
+  })());
+});
