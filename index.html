@@ -3,8 +3,26 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="theme-color" content="#EDF1F0" media="(prefers-color-scheme: light)">
-<meta name="theme-color" content="#141816" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#EDF1F0" id="themeColor">
+
+<!-- The Android system bars take their colour from theme_color in the
+     manifest, which is a single static value and cannot follow dark mode.
+     Media-scoped theme-color metas are also ignored once a PWA is
+     installed. Setting it here, inline and before first paint, is what
+     actually works — and it has to be kept in sync afterwards, because
+     the phone can switch theme while the app is open. -->
+<script>
+(function () {
+  var m = window.matchMedia('(prefers-color-scheme: dark)');
+  function paint() {
+    document.getElementById('themeColor')
+      .setAttribute('content', m.matches ? '#141816' : '#EDF1F0');
+  }
+  paint();
+  m.addEventListener ? m.addEventListener('change', paint)
+                     : m.addListener(paint);
+})();
+</script>
 <meta name="description" content="A shared care log for family and friends.">
 <title>Care log</title>
 
